@@ -83,7 +83,7 @@ async function submit(req, res, mode) {
 app.post("/api/submissions/run", (req, res) => submit(req, res, "run"));
 app.post("/api/submissions/submit", (req, res) => submit(req, res, "submit"));
 app.use((error, _req, res, _next) => {
-  const status = Number.isInteger(error.status) ? error.status : error.name === "ZodError" ? 400 : 500;
+  const status = Number.isInteger(error.status) ? error.status : error.code === "DATABASE_NOT_CONFIGURED" ? 503 : error.name === "ZodError" ? 400 : 500;
   const message = status >= 500 ? "Unexpected server error." : error.message;
   res.status(status).json({ error: { code: error.code || "REQUEST_FAILED", message, ...(error.name === "ZodError" ? { details: error.issues } : {}) } });
 });

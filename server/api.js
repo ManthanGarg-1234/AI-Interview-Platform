@@ -13,7 +13,8 @@ router.get("/health", async (_req, res) => {
     try { await getPrisma().$queryRaw`SELECT 1`; database = "ready"; }
     catch { database = "unavailable"; }
   }
-  res.status(database === "unavailable" ? 503 : 200).json({ ok: database !== "unavailable", service: "api", database, redis: process.env.REDIS_URL ? "configured" : "not_configured" });
+  const ready = database === "ready";
+  res.status(ready ? 200 : 503).json({ ok: ready, service: "api", database, redis: process.env.REDIS_URL ? "configured" : "not_configured" });
 });
 router.post("/auth/register", async (req, res, next) => { try { await register(req, res); } catch (error) { next(error); } });
 router.post("/auth/login", async (req, res, next) => { try { await login(req, res); } catch (error) { next(error); } });
