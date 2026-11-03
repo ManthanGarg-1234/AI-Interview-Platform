@@ -7,7 +7,7 @@
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
     "build": "npm --prefix frontend run build",
-    "test": "node --test server/tests/api.test.js"
+    "test": "node --test server/tests/*.test.js"
   },
   "engines": {
     "node": ">=20"
@@ -24,6 +24,7 @@
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.12.1",
+    "multer": "^2.5.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

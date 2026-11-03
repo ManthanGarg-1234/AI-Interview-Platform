@@ -19,6 +19,21 @@
 - Preserved backend code, Prisma schema, frontend source, tests, Docker
   configuration, and architecture documentation.
 
+## 2026-11-03 - Authentication hardening and student profile foundation
+
+- Added backend authorization tests covering unauthenticated access, CSRF
+  enforcement, and public admin-registration rejection.
+- Fixed CSRF propagation for frontend state-changing requests and protected
+  logout with CSRF validation.
+- Added student profile editing and discoverability controls.
+- Added private development resume upload metadata/storage foundation with
+  PDF/DOCX validation, a 5 MB limit, SHA-256 tracking, pending scan state,
+  versioning, and active-version selection.
+- Verification: backend tests 6/6 passed; frontend tests 1/1 passed; Vite
+  build passed; Prisma validation and client generation passed.
+- Docker/PostgreSQL integration remains blocked because Docker is unavailable
+  on the development machine. `prisma migrate dev` therefore reports P1001.
+
 ## Current phase
 
 **Phase 2: Detailed architecture design, approval gate.**

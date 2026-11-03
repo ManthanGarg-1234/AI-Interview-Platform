@@ -141,4 +141,4 @@ function csrfProtection(req, _res, next) {
   next();
 }
 
-module.exports = { register, login, refresh, logout, authenticate, requireRole, csrfProtection, publicUser, accessCookie };
+module.exports = { register, login, refresh, logout, authenticate, requireRole, csrfProtection, publicUser, accessCookie, csrfCookie };
