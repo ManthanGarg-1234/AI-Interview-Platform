@@ -56,3 +56,14 @@ deployment environment and never shipped to the browser.
   sensitive administrative actions.
 - All cross-portal reads are constrained by role, ownership, consent, and
   organization membership.
+
+## Approved Release 1 decisions
+
+- Secure HTTP-only cookies with short-lived access tokens and rotated refresh
+  tokens.
+- External LLM through a backend provider abstraction; keys/configuration and
+  cost controls remain server-side.
+- Judge0 through a dedicated execution adapter; a self-hosted isolated worker
+  can replace it later.
+- Text AI interviews in Release 1; voice/WebRTC video in Release 2.
+- Docker-based local development first, followed by a cloud deployment plan.

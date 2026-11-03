@@ -71,3 +71,8 @@ The current browser records (`ios_interviews`, `ios_session`, `ios_draft`,
 `ios_bookmarks`, `ios_goals`, jobs, applications, and audit records) are not a
 portable production schema. A data-migration utility should be designed after
 the target Prisma schema is approved; no automatic conversion is claimed here.
+
+The field-level contract, enum set, indexes, relation constraints, and deletion
+policies are defined in [FINAL_PRISMA_SCHEMA.md](./FINAL_PRISMA_SCHEMA.md). That
+document is the source of truth for executable Prisma design; this ERD remains
+the relationship overview.

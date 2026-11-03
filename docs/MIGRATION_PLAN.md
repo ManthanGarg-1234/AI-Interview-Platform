@@ -16,9 +16,9 @@ Use an incremental strangler migration:
 3. Create a React shell and shared design system that preserves existing branding.
 4. Create an Express modular monolith and Prisma schema before replacing data
    consumers.
-5. Migrate authentication and one complete Student slice first.
-6. Migrate coding, assessments, interviews, recruiter, and admin slices in
-   dependency order.
+5. Migrate authentication and a minimum interconnected slice across all portals.
+6. Migrate coding, assessments, text AI, study planner, recruiter, and admin
+   slices in dependency order.
 7. Verify each slice through API, component, integration, and browser tests.
 8. Retire legacy pages only after approval and parity evidence.
 
@@ -88,7 +88,8 @@ These cleanup actions require successful parity tests and explicit approval.
 
 - Coding problems/topics/test cases/submissions/results schema.
 - Monaco editor and multi-language model.
-- Queue-backed execution provider; Judge0 integration or isolated worker.
+- Queue-backed Judge0 adapter; preserve a provider interface for a future
+  self-hosted isolated worker.
 - Server-enforced practice/contest/recruiter modes, limits, hidden tests,
   persistence, analytics, and submission history.
 
@@ -103,7 +104,8 @@ These cleanup actions require successful parity tests and explicit approval.
 - Central provider abstraction with server-only credentials and usage records.
 - Persistent chatbot with authorized context and streaming support.
 - Text AI interviewer, evaluation, feedback, and consent.
-- Later: voice, WebRTC signaling, TURN, and real interview room.
+- Release 1 is text-only. Voice, WebRTC signaling, TURN, and media consent are
+  Release 2.
 
 ### Phase 7: Recruiter portal
 
@@ -132,6 +134,7 @@ These cleanup actions require successful parity tests and explicit approval.
 
 ## First implementation slice after approval
 
-Recommended first vertical slice: secure authentication plus student profile.
-It establishes the core user/session/role model and creates the foundation for
-all three portal layouts without pretending that dashboard metrics are complete.
+The first Release 1 slice must cross all portals: authenticated student profile
+and discoverability, recruiter company/job publication, student application,
+recruiter screening, and admin audit visibility. This proves the core
+student-to-recruiter-to-admin data path before deeper feature modules.

@@ -56,3 +56,13 @@ the API remains the authority for authorization.
 - Validate all uploaded files by type, size, content, and malware policy.
 - Build audit records from server-side actor/resource context.
 - Redact resume, interview, AI, and assessment data from general logs.
+
+## Approved transport decisions
+
+- Authentication: secure HTTP-only cookies with CSRF protection for state-changing
+  requests.
+- AI text streaming: authenticated SSE.
+- Future interview presence/signaling: Socket.IO, separate from AI message
+  streaming.
+- Code execution: BullMQ job boundary plus Judge0 adapter; no execution in the
+  Express process.

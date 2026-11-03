@@ -40,3 +40,17 @@ code sandbox escape, denial of service, and sensitive log leakage.
 Secrets belong in environment/secret management, not Git. PostgreSQL backups,
 restore tests, dependency scanning, vulnerability response, security monitoring,
 and data-retention policies must be established before production deployment.
+
+## Approved security decisions
+
+- Use secure HTTP-only cookies, short-lived access tokens, rotated refresh
+  tokens, server-side session records, revocation, and CSRF protection.
+- Keep all LLM credentials, Judge0 credentials, model configuration, and cost
+  controls on the backend.
+- Use Judge0 behind a dedicated adapter in Release 1; Express never executes
+  untrusted code.
+- Use configurable retention policies and consent records. Proposed engineering
+  defaults are documented in [DATA_RETENTION_POLICY.md](./DATA_RETENTION_POLICY.md)
+  and require legal/product approval before production.
+- Release 1 is text-only for AI interviews; media consent and WebRTC remain
+  future-scope design work.

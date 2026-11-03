@@ -2,7 +2,7 @@
 
 ## Current phase
 
-**Phase 1: Existing project audit and migration planning.**
+**Phase 2: Detailed architecture design, approval gate.**
 
 ## Completed
 
@@ -15,6 +15,12 @@
 - Created backup branch `migration-backup-2026-11-03`.
 - Created the audit, requirements, architecture, API, database, security,
   testing, dependency, and migration planning documents in `docs/`.
+- Completed the architecture review.
+- Recorded approved decisions for cookie-based authentication, external LLM
+  abstraction, Judge0-first execution, text-only Release 1 interviews,
+  Docker-first development, and three-portal interconnected Release 1 scope.
+- Created the detailed RBAC, data-access, Prisma, AI, code-execution, interview,
+  workflow, analytics, retention, and implementation-roadmap documents.
 
 ## Not started
 
@@ -25,6 +31,7 @@
 - Student, recruiter, and admin target portals.
 - AI, queue, object storage, WebRTC, analytics, moderation, and production code
   execution.
+- Executable Prisma schema and database migrations.
 
 ## Verification
 
@@ -36,5 +43,6 @@
 
 ## Approval gate
 
-Substantial application changes are intentionally paused pending review and
-approval of the audit, architecture, schema, API plan, and migration sequence.
+Application code, dependency installation, and database migrations remain paused
+until the remaining approval items in the final architecture summary are
+confirmed. This phase produced documentation only.

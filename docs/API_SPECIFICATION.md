@@ -64,11 +64,12 @@ idempotency requirements where applicable.
 }
 ```
 
-## Open contract decisions
+## Approved contract decisions
 
-- Cookie versus bearer access-token transport must be confirmed before auth
-  implementation; secure HTTP-only cookies are the recommended default.
-- Final AI streaming transport (SSE versus Socket.IO) must be selected with the
-  provider and deployment constraints.
-- Final code execution provider and supported languages require infrastructure
-  approval.
+- Authentication uses secure HTTP-only cookies, short-lived access tokens,
+  refresh-token rotation, server-side sessions, and CSRF protection.
+- Release 1 AI streaming uses authenticated Server-Sent Events. Socket.IO is
+  reserved for future interview presence/signaling.
+- Release 1 coding uses Judge0 through a dedicated adapter and queue boundary.
+  Express never executes untrusted source.
+- Release 1 includes text AI interviews. Voice/video is Release 2.

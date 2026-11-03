@@ -81,3 +81,12 @@ approval before substantial changes.
   approved.
 
 Never put these values in source, frontend bundles, Git, or documentation.
+
+## Approved service decisions
+
+- Local development starts with Docker Compose for PostgreSQL and Redis.
+- Release 1 uses an external LLM API behind a backend provider abstraction.
+- Release 1 uses Judge0 behind a dedicated code execution adapter.
+- Release 1 uses SSE for AI streaming and text-only interviews.
+- Voice, WebRTC/TURN, and media storage are Release 2 unless separately
+  approved.
