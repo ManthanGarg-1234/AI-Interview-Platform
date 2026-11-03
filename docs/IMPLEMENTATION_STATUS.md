@@ -12,6 +12,13 @@
 - Verification: backend regression tests 4/4 passed; frontend tests 1/1 passed;
   Vite production build passed.
 
+## 2026-11-03 - Legacy static application cleanup
+
+- Removed the inventoried root HTML pages and legacy `css/` and `js/` sources
+  after the React frontend foundation was created.
+- Preserved backend code, Prisma schema, frontend source, tests, Docker
+  configuration, and architecture documentation.
+
 ## Current phase
 
 **Phase 2: Detailed architecture design, approval gate.**
