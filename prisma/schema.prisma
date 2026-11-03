@@ -341,6 +341,9 @@ model StudentProfile {
   headline          String?       @db.VarChar(180)
   bio               String?
   location          String?       @db.VarChar(160)
+  githubUrl         String?       @db.VarChar(500)
+  linkedinUrl       String?       @db.VarChar(500)
+  portfolioUrl      String?       @db.VarChar(500)
   discoverable      Boolean       @default(false)
   readinessScore    Decimal?      @db.Decimal(5, 2)
   readinessFormulaVersion String?
@@ -641,8 +644,23 @@ model ResumeVersion {
   file              StoredFile        @relation(fields: [fileId], references: [id], onDelete: Restrict)
   applications      Application[]
   analyses          ResumeAnalysis[]
+  processingJobs     ResumeProcessingJob[]
   @@unique([resumeId, version])
   @@index([fileId])
+}
+
+model ResumeProcessingJob {
+  id              String   @id @default(uuid()) @db.Uuid
+  resumeVersionId String   @db.Uuid
+  status          String   @default("PENDING")
+  attempts        Int      @default(0)
+  errorMessage    String?
+  queuedAt        DateTime @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  resumeVersion   ResumeVersion @relation(fields: [resumeVersionId], references: [id], onDelete: Cascade)
+  @@unique([resumeVersionId])
+  @@index([status, queuedAt])
 }
 
 model ResumeAnalysis {
@@ -1389,4 +1407,3 @@ model Appeal {
   updatedAt         DateTime            @updatedAt
   @@index([caseId, status])
 }
-

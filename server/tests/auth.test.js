@@ -30,3 +30,19 @@ test("state-changing requests require CSRF protection", async () => {
   assert.equal(logout.status, 403);
 });
 
+test("all student profile and resume surfaces reject unauthenticated access", async () => {
+  const paths = [
+    "/api/v1/me/profile",
+    "/api/v1/me/education",
+    "/api/v1/me/projects",
+    "/api/v1/me/experience",
+    "/api/v1/me/certifications",
+    "/api/v1/me/skills",
+    "/api/v1/me/resumes",
+    "/api/v1/me/resume-versions/not-a-real-version/download",
+  ];
+  for (const path of paths) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 401, path);
+  }
+});

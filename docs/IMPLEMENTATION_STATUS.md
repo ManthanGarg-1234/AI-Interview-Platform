@@ -34,6 +34,21 @@
 - Docker/PostgreSQL integration remains blocked because Docker is unavailable
   on the development machine. `prisma migrate dev` therefore reports P1001.
 
+## 2026-11-03 - Phase 2 profile and resume management
+
+- Added ownership-scoped CRUD APIs for education, projects, experience,
+  certifications, and skills.
+- Added social links and phone fields to `StudentProfile`.
+- Added profile completion calculation in the React profile interface.
+- Added private storage abstraction, resume version activation, deletion,
+  private download authorization, and scan-state checks.
+- Added `ResumeProcessingJob` persistence and a BullMQ enqueue adapter with
+  duplicate-safe job IDs. AI resume scoring and rewriting remain out of scope.
+- Verification: backend tests 7/7 passed; frontend tests 1/1 passed; Vite
+  production build passed; Prisma validation and client generation passed.
+- PostgreSQL migration and real database CRUD remain unverified until Docker
+  or a reachable PostgreSQL instance is available.
+
 ## Current phase
 
 **Phase 2: Detailed architecture design, approval gate.**
