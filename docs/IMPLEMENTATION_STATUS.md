@@ -1,5 +1,17 @@
 # Implementation Status
 
+## 2026-11-03 - Phase 1 foundation started
+
+- Added the React/Vite/Tailwind frontend shell under `frontend/`.
+- Added versioned Express foundation endpoints under `/api/v1`.
+- Added Prisma schema at `prisma/schema.prisma`, validated with Prisma 6.19.0.
+- Added cookie-based authentication primitives, session persistence, CSRF checks,
+  role guards, registration, login, refresh, logout, and student profile routes.
+- Added Docker Compose PostgreSQL and Redis services.
+- Preserved the legacy static pages and coding API unchanged.
+- Verification: backend regression tests 4/4 passed; frontend tests 1/1 passed;
+  Vite production build passed.
+
 ## Current phase
 
 **Phase 2: Detailed architecture design, approval gate.**

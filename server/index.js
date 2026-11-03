@@ -2,6 +2,10 @@
 
 require("dotenv").config?.();
 const express = require("express");
+const cookieParser = require("cookie-parser");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const cors = require("cors");
 const crypto = require("node:crypto");
 const { listProblems, getProblem } = require("./problems");
 const storage = require("./storage");
@@ -10,17 +14,28 @@ const { createJavaSubmission } = require("./judge0");
 const { createLocalSubmission } = require("./local-java");
 
 const app = express();
+app.disable("x-powered-by");
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(morgan(process.env.NODE_ENV === "test" ? "tiny" : "combined"));
+app.use(cookieParser());
 app.use(express.json({ limit: "128kb" }));
+app.use(cors({
+  origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
+  credentials: true,
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["content-type", "x-csrf-token", "x-demo-user-id"],
+}));
 app.use((req, res, next) => {
   const origin = process.env.FRONTEND_ORIGIN || "http://127.0.0.1:5500";
   if (req.get("origin") === origin) res.setHeader("access-control-allow-origin", origin);
-  res.setHeader("access-control-allow-headers", "content-type,x-demo-user-id");
+  res.setHeader("access-control-allow-headers", "content-type,x-csrf-token,x-demo-user-id");
   res.setHeader("access-control-allow-methods", "GET,POST,PATCH,OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
 
 const localRunnerEnabled = process.env.LOCAL_JAVA_RUNNER !== "false" && !process.env.JUDGE0_URL;
+app.use("/api/v1", require("./api"));
 app.get("/api/health", (_req, res) => res.json({ ok: true, judgeConfigured: Boolean(process.env.JUDGE0_URL), localRunnerEnabled }));
 app.get("/api/problems", (req, res) => res.json({ data: listProblems(req.query).map(({ hiddenTests, ...problem }) => problem) }));
 app.get("/api/problems/:id", (req, res) => {
@@ -67,7 +82,11 @@ async function submit(req, res, mode) {
 }
 app.post("/api/submissions/run", (req, res) => submit(req, res, "run"));
 app.post("/api/submissions/submit", (req, res) => submit(req, res, "submit"));
-app.use((error, _req, res, _next) => res.status(500).json({ error: "Unexpected server error." }));
+app.use((error, _req, res, _next) => {
+  const status = Number.isInteger(error.status) ? error.status : error.name === "ZodError" ? 400 : 500;
+  const message = status >= 500 ? "Unexpected server error." : error.message;
+  res.status(status).json({ error: { code: error.code || "REQUEST_FAILED", message, ...(error.name === "ZodError" ? { details: error.issues } : {}) } });
+});
 
 if (require.main === module) app.listen(Number(process.env.PORT || 3000), () => console.log(`Coding API listening on ${process.env.PORT || 3000}`));
 module.exports = app;
