@@ -49,6 +49,25 @@
 - PostgreSQL migration and real database CRUD remain unverified until Docker
   or a reachable PostgreSQL instance is available.
 
+## 2026-11-03 - Phase 3 AI resume analysis
+
+- Added ownership-scoped resume analysis request, history, detail, retry, and
+  suggestion decision APIs.
+- Added structured ATS-estimate scoring with category scores, missing keyword
+  extraction, strengths, weaknesses, and transparent deduction explanations.
+- Added backend provider abstraction with a clearly labeled local mock provider
+  and optional configured JSON provider integration.
+- Added validated advisory suggestions that preserve the original resume and
+  support accept/reject decisions without automatic profile mutation.
+- Added BullMQ analysis queue and worker, persisted analysis jobs, usage records,
+  processing states, and retry-safe job IDs.
+- Added the React resume analysis screen with selection, job description input,
+  processing/history states, score visualization, missing keywords, and
+  original-versus-suggested content.
+- Verification: backend tests 10/10 passed; frontend tests 1/1 passed; Vite
+  production build passed; Prisma validation and client generation passed.
+- Live PostgreSQL/Redis processing remains pending because Docker is unavailable.
+
 ## Current phase
 
 **Phase 2: Detailed architecture design, approval gate.**

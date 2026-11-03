@@ -9,6 +9,7 @@ const { register, login, refresh, logout, authenticate, requireRole, csrfProtect
 const { getPrisma } = require("./prisma");
 const storage = require("./private-storage");
 const { enqueueResumeProcessing } = require("./resume-processing");
+const { enqueueResumeAnalysis, processResumeAnalysis } = require("./resume-analysis");
 
 const router = express.Router();
 const upload = multer({
@@ -135,6 +136,54 @@ router.delete("/me/resumes/:id", authenticate, requireRole("STUDENT"), async (re
 });
 router.get("/me/resume-versions/:id/download", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try { const version = await getPrisma().resumeVersion.findFirst({ where: { id: req.params.id, resume: { studentId: await profileId(req.auth.sub), deletedAt: null }, file: { scanStatus: "CLEAN", deletedAt: null } }, include: { file: true } }); if (!version) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resume file is unavailable." } }); const buffer = await storage.get(version.file.objectKey); res.set({ "Content-Type": version.file.mimeType, "Content-Disposition": `attachment; filename="${version.file.originalName.replace(/["\r\n]/g, "")}"`, "Cache-Control": "private, no-store" }).send(buffer); } catch (error) { next(error); }
+});
+router.post("/me/resume-analyses", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const input = z.object({ resumeVersionId: z.string().uuid(), targetRole: z.string().trim().min(2).max(200), jobDescription: z.string().trim().max(20_000).nullable().optional() }).parse(req.body);
+    const prisma = getPrisma();
+    const version = await prisma.resumeVersion.findFirst({ where: { id: input.resumeVersionId, resume: { studentId: await profileId(req.auth.sub), deletedAt: null }, file: { scanStatus: { in: ["CLEAN", "PENDING"] }, deletedAt: null } } });
+    if (!version) return res.status(404).json({ error: { code: "VERSION_NOT_FOUND", message: "Resume version is unavailable." } });
+    const analysis = await prisma.$transaction(async (tx) => {
+      const created = await tx.resumeAnalysis.create({ data: { resumeVersionId: version.id, targetRole: input.targetRole, jobDescription: input.jobDescription || null, status: "PENDING", findings: {} } });
+      await tx.resumeAnalysisJob.create({ data: { analysisId: created.id, status: "PENDING" } });
+      return created;
+    });
+    const queueResult = await enqueueResumeAnalysis(analysis.id);
+    if (!queueResult.queued && process.env.NODE_ENV !== "test") setImmediate(() => processResumeAnalysis(analysis.id).catch((error) => console.error("Resume analysis processing failed", error)));
+    res.status(202).json({ data: { ...analysis, processing: queueResult } });
+  } catch (error) { next(error); }
+});
+router.get("/me/resume-analyses", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const analyses = await getPrisma().resumeAnalysis.findMany({ where: { resumeVersion: { resume: { studentId: await profileId(req.auth.sub), deletedAt: null } } }, include: { resumeVersion: { select: { id: true, version: true, resume: { select: { id: true, title: true } } } }, processingJob: true }, orderBy: { createdAt: "desc" } });
+    res.json({ data: analyses });
+  } catch (error) { next(error); }
+});
+router.get("/me/resume-analyses/:id", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const analysis = await getPrisma().resumeAnalysis.findFirst({ where: { id: req.params.id, resumeVersion: { resume: { studentId: await profileId(req.auth.sub), deletedAt: null } } }, include: { suggestions: true, processingJob: true, resumeVersion: { select: { id: true, version: true, resume: { select: { id: true, title: true } } } } } });
+    if (!analysis) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Analysis not found." } });
+    res.json({ data: analysis });
+  } catch (error) { next(error); }
+});
+router.post("/me/resume-analyses/:id/retry", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const analysis = await getPrisma().resumeAnalysis.findFirst({ where: { id: req.params.id, resumeVersion: { resume: { studentId: await profileId(req.auth.sub) } } } });
+    if (!analysis) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Analysis not found." } });
+    await getPrisma().resumeAnalysis.update({ where: { id: analysis.id }, data: { status: "PENDING", findings: {} } });
+    const queued = await enqueueResumeAnalysis(analysis.id);
+    if (!queued.queued && process.env.NODE_ENV !== "test") setImmediate(() => processResumeAnalysis(analysis.id).catch((error) => console.error("Resume analysis retry failed", error)));
+    res.status(202).json({ data: { id: analysis.id, status: "PENDING", processing: queued } });
+  } catch (error) { next(error); }
+});
+router.patch("/me/profile-suggestions/:id", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const input = z.object({ status: z.enum(["APPROVED", "REJECTED", "PROPOSED"]), suggestedValue: z.string().max(5000).optional() }).parse(req.body);
+    const suggestion = await getPrisma().profileSuggestion.findFirst({ where: { id: req.params.id, studentId: await profileId(req.auth.sub) } });
+    if (!suggestion) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Suggestion not found." } });
+    const updated = await getPrisma().profileSuggestion.update({ where: { id: suggestion.id }, data: { status: input.status, suggestedValue: input.suggestedValue === undefined ? undefined : input.suggestedValue, approvedAt: input.status === "APPROVED" ? new Date() : null } });
+    res.json({ data: updated });
+  } catch (error) { next(error); }
 });
 
 module.exports = router;

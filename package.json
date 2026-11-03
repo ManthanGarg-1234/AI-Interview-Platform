@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
+    "worker": "node server/resume-worker.js",
     "build": "npm --prefix frontend run build",
     "test": "node --test server/tests/*.test.js"
   },

@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 
 const navigation = {
-  STUDENT: [{ label: "Dashboard", to: "/student", icon: LayoutDashboard }, { label: "Profile", to: "/student/profile", icon: UserRound }],
+  STUDENT: [{ label: "Dashboard", to: "/student", icon: LayoutDashboard }, { label: "Profile", to: "/student/profile", icon: UserRound }, { label: "Resume analysis", to: "/student/resume-analysis", icon: BriefcaseBusiness }],
   RECRUITER: [{ label: "Dashboard", to: "/recruiter", icon: LayoutDashboard }, { label: "Jobs", to: "/recruiter/jobs", icon: BriefcaseBusiness }, { label: "Candidates", to: "/recruiter/candidates", icon: Users }],
   ADMIN: [{ label: "Dashboard", to: "/admin", icon: LayoutDashboard }, { label: "Security", to: "/admin/security", icon: ShieldCheck }],
 };
