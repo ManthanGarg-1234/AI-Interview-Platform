@@ -21,6 +21,14 @@
   Docker-first development, and three-portal interconnected Release 1 scope.
 - Created the detailed RBAC, data-access, Prisma, AI, code-execution, interview,
   workflow, analytics, retention, and implementation-roadmap documents.
+- Strengthened RBAC with company-role permissions, consent gates, discoverability,
+  admin privilege auditing, suspension revocation, and final-owner protection.
+- Reworked AI and coding-judge contracts with ownership, cancellation,
+  idempotency, hidden-test, failure, retry, and retention controls.
+- Replaced the Prisma design with a single executable-schema contract containing
+  explicit relations, enums, indexes, constraints, and deletion policies.
+- Created `FINAL_ARCHITECTURE_APPROVAL.md` and completed the documentation
+  consistency review.
 
 ## Not started
 
@@ -32,6 +40,7 @@
 - AI, queue, object storage, WebRTC, analytics, moderation, and production code
   execution.
 - Executable Prisma schema and database migrations.
+- Prisma validation/dry-run against a local PostgreSQL instance.
 
 ## Verification
 
@@ -44,5 +53,6 @@
 ## Approval gate
 
 Application code, dependency installation, and database migrations remain paused
-until the remaining approval items in the final architecture summary are
-confirmed. This phase produced documentation only.
+until the remaining approval items in
+`FINAL_ARCHITECTURE_APPROVAL.md` are confirmed. This phase produced
+documentation only.

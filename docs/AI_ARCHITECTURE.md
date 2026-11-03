@@ -1,83 +1,129 @@
 # AI Architecture
 
-## Release 1 scope
+## Scope and service boundaries
 
-Release 1 includes:
+Release 1 includes four separate feature services behind one provider-neutral
+integration layer:
 
-- persistent student chatbot
-- text AI interviewer
-- resume analyzer
-- profile enhancer
-- AI usage tracking and admin model configuration
+1. **ChatbotService**: owns student conversations, subject/topic context,
+   message authorization, streaming, and conversation retention.
+2. **AIInterviewerService**: owns interview configuration snapshots, question
+   progression, follow-ups, rubric evaluation, and interview consent.
+3. **ResumeAnalyzerService**: owns upload handoff, malware-scan status, parsing,
+   structured findings, and analysis usage records.
+4. **ProfileEnhancerService**: converts approved resume/profile inputs into
+   editable suggestions; it never writes a student profile automatically.
 
-Voice, speech-to-text, text-to-speech, and video are Release 2 capabilities.
+`AIProviderGateway` is the only component allowed to call an external LLM.
+Feature services cannot access provider SDKs or secrets directly.
 
-## Provider abstraction
+## Provider and secret contract
 
-The backend owns all provider credentials and exposes a provider-neutral
-interface:
+Provider credentials are stored as secret-manager references, not plaintext
+database fields or environment values exposed to the frontend. A configuration
+record stores `provider`, `modelAlias`, limits, pricing version, and
+`secretRef`; a backend secret manager resolves `secretRef` at request time.
+Secrets are never logged, returned by APIs, or placed in prompts.
 
 ```text
-generate(request: GenerationRequest): Promise<GenerationResponse>
-stream(request: GenerationRequest): AsyncIterable<GenerationEvent>
-moderate(input): Promise<ModerationResult>
-estimateCost(request): CostEstimate
+generate(request, abortSignal): Promise<GenerationResponse>
+stream(request, abortSignal): AsyncIterable<GenerationEvent>
+moderate(input, abortSignal): Promise<ModerationResult>
+estimateCost(usage, pricingVersion): CostEstimate
 ```
 
-`GenerationRequest` contains `feature`, `modelAlias`, `messages`, bounded
-`authorizedContext`, `temperature`, `maxOutputTokens`, `requestId`, and
-`promptVersion`. It never accepts arbitrary system prompts or unrestricted
-database content from the client.
+`GenerationRequest` is server-constructed and contains feature, model alias,
+server prompt version, allowed messages, bounded authorized context, request
+ID/idempotency key, temperature, and output limit. The browser cannot provide a
+system prompt, provider name, model credentials, or unrestricted context.
 
-`GenerationResponse` contains provider-neutral text/structured output, provider
-request ID, model alias, prompt version, input/output token counts, estimated
-cost, finish reason, safety result, and timestamp. Raw provider responses are
-redacted before persistence.
+## Message authorization and prompt safety
 
-Initial provider selection is an external LLM API. The adapter must support a
-future second provider without changing feature services.
+Allowed external roles are only `user` and `assistant`; `system`, `developer`,
+tool instructions, and provider-specific control messages are server-owned.
+Chatbot conversation ownership is `AIConversation.userId`. Every read, append,
+delete, stream, and regenerate operation requires that owner; admin support
+access is a separately audited, minimum-necessary exception.
 
-## Context isolation
+System prompts are versioned, immutable published templates. User text and
+uploaded document text are untrusted data delimited as data, never concatenated
+into instructions. Controls include:
 
-- Chatbot context is limited to the student's selected subject/topic and
-  explicitly permitted profile/learning data.
-- Resume/profile features receive only the uploaded document and user-approved
-  profile fields.
-- AI interviewer receives only interview configuration, prior answers in that
-  session, and approved rubric context.
-- Recruiter/admin data is never added to a student prompt.
-- Untrusted document text is marked as data, not instructions.
-- Retrieved context is capped by tokens and classified by sensitivity.
+- context allowlists by feature and sensitivity;
+- size/token caps and field-level redaction;
+- prompt-injection classification and instruction stripping;
+- no tool/database action from model output without a server-side allowlisted
+  command and authorization check;
+- output moderation and schema validation;
+- refusal for requests outside feature scope or unauthorized user data;
+- no direct profile, hiring, moderation, or permission mutations from AI output.
 
-## Prompt and output controls
+Uploaded resumes are stored privately, scanned for malware before parsing, parsed
+in a resource-limited worker, and converted to plain extracted text. Macros,
+embedded scripts, active content, and untrusted instructions are discarded.
+Parser output is treated as untrusted data and is never used as a system prompt.
 
-- Prompt templates are versioned records with owner, feature, model alias,
-  allowed variables, and active/revoked status.
-- Validate structured outputs against Zod schemas.
-- Run input/output safety checks and refuse unsafe or unauthorized requests.
-- Suggestions are drafts; students must approve profile changes.
-- AI scores are advisory and show evidence/limitations; they do not establish
-  misconduct or verified qualifications.
+## Chatbot contract
 
-## Rate and cost controls
+`POST /api/v1/ai/conversations/:id/messages` accepts only validated user text,
+subject/topic, and an idempotency key. The server verifies ownership, loads the
+conversation, applies retention/quota limits, constructs authorized context,
+and creates one user message. A retry with the same idempotency key returns the
+same result and cannot duplicate the message.
 
-Apply per-user, per-role, per-feature, and global limits using Redis. Enforce
-daily token budgets, request size, output size, concurrency, timeout, retry,
-provider circuit-breaker, and admin-configured cost ceilings. A request is
-rejected or queued when budget is exhausted; it is never silently downgraded.
+Streaming uses authenticated SSE. The stream emits `started`, bounded `delta`,
+`usage`, `completed`, or `error` events. If interrupted, the server marks the
+assistant message `PARTIAL` or discards it according to the policy; the client
+can resume using the message/request ID, never by replaying arbitrary prompt
+roles. Provider cancellation is sent through `AbortSignal` on client disconnect,
+timeout, quota exhaustion, or shutdown.
 
-## Streaming
+## AI interviewer progression
 
-Release 1 uses Server-Sent Events for text streaming over authenticated HTTP.
-The server validates the conversation/session before opening the stream and
-persists the final assistant message only after completion. Disconnects cancel
-provider work where supported. Socket.IO remains reserved for future interview
-presence/signaling.
+The server stores a question-plan snapshot and current sequence. Progression:
 
-## Failure handling
+1. validate configuration and create `QUESTION_GENERATING`;
+2. select/generate the next question using the pinned prompt/rubric version;
+3. present exactly one question;
+4. persist the answer with server timestamp and answer number;
+5. classify answer completeness/correctness using bounded structured output;
+6. choose the configured next topic or one bounded follow-up;
+7. prevent loops, duplicate questions, and question-count/time overruns;
+8. queue final evaluation after completion.
 
-Provider timeout, quota, safety refusal, malformed output, and upstream errors
-map to explicit user-safe error codes. Retries are limited to idempotent
-transient failures with exponential backoff. Every request records status,
-latency, usage, and cost without storing secrets.
+Follow-ups are selected only from server-owned templates and session context.
+They cannot introduce recruiter/admin/private data.
+
+## Versioned evaluation rubrics
+
+Rubrics are immutable versioned records containing categories, scoring anchors,
+minimum evidence, insufficient-data behavior, prompt version, and publication
+status. Evaluation stores the rubric version, category scores, evidence
+references, model/provider usage, and safety result. A score without sufficient
+evidence is `INSUFFICIENT_EVIDENCE`, not a guessed score. Evaluations are
+advisory and cannot independently decide hiring, misconduct, skill verification,
+or profile changes.
+
+## Usage, cost, retries, and cancellation
+
+Every request has request ID, idempotency key, feature, user, provider request
+ID, prompt version, model alias, input tokens, output tokens, cached tokens,
+latency, status, and pricing version. After completion, a reconciliation worker
+compares provider-reported usage with local estimates and records actual cost;
+discrepancies are flagged rather than silently overwritten.
+
+Limits include per-user/role/feature rate limits, concurrency, daily token
+budget, output size, and global cost ceiling. Transient timeouts receive bounded
+exponential retries only before visible output begins and only when idempotency
+is safe. Safety refusals, validation errors, quota exhaustion, and cancellation
+are not retried. Requests time out, emit explicit error codes, and never
+silently downgrade to a fake response.
+
+## Retention and deletion
+
+Chat messages, transcripts, resume analysis text, profile suggestions, and
+provider references use the configurable AI/data-retention policy. Deletion is
+ownership-checked, asynchronous, idempotent, removes object/parser artifacts,
+revokes active streams, and preserves only minimized audit/usage records required
+by the approved retention policy or legal hold.
 

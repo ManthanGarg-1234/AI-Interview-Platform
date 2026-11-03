@@ -1,89 +1,131 @@
 # Final RBAC Permission Matrix
 
-## Authorization model
+## Enforcement model
 
-Authorization is deny-by-default and enforced in Express services, not only in
-React route guards. Every request has an authenticated user, session status,
-role, resource owner/company scope, consent scope where applicable, and audit
-context.
+Authorization is deny-by-default and enforced in Express services. A React
+route guard is UX only. Every protected request evaluates:
 
-Roles:
+1. authenticated session and account status;
+2. platform role;
+3. company membership and company permission, when applicable;
+4. resource ownership, assignment, or application scope;
+5. explicit consent and its current version;
+6. rate, state-transition, and suspension rules;
+7. audit requirements.
 
-- `STUDENT`: owns their profile, learning, submissions, applications, and AI data.
-- `RECRUITER`: acts only through an active `CompanyMember` relationship and its
-  company permissions.
-- `ADMIN`: platform operator with explicit privileged actions and audit logging.
-- `SYSTEM`: internal workers only; no interactive login or user-facing access.
+`PENDING_VERIFICATION` can use only verification/resend flows. `ACTIVE` can use
+authorized features. `SUSPENDED` can use only appeal/support flows. `DELETED`
+has no interactive access. Admin accounts are provisioned; public admin signup
+is forbidden.
 
-Account states `PENDING_VERIFICATION`, `ACTIVE`, `SUSPENDED`, and `DELETED` are
-checked before authorization. Suspended/deleted accounts cannot use protected
-features. Admin access is provisioned, never self-registered.
+## Company permissions
 
-## Resource/action matrix
+| Company role | Company/member management | Verification submission | Verification review/approval | Jobs | Candidates/applications | Assessments | Interviews | Hiring decisions | Analytics |
+|---|---|---|---|---|---|---|---|---|---|
+| `OWNER` | Invite, deactivate, change roles except final-owner removal | Submit/update evidence | Read status; cannot self-approve | Create/edit/publish/pause/close/delete eligible jobs | Full company scope | Create/edit/publish/assign | Schedule/manage/evaluate | Final decision | Full company aggregates and authorized candidate detail |
+| `HIRING_MANAGER` | Read members; cannot change owner | Submit/update evidence | Read status | Create/edit/publish/pause/close | Full company scope | Create/edit/publish/assign | Schedule/manage/evaluate | Final decision if granted by company policy | Full company aggregates |
+| `REVIEWER` | Read permitted members | No | Read status | Read published/company-assigned jobs | Read assigned candidates; screen; add review | Read assigned assessment results | Read assigned interview; submit evaluation | No | Assigned/aggregate analytics only |
+| `INTERVIEWER` | No | No | No | Read assigned job context | Read only candidate data needed for assigned interview | Read assigned assessment summary | Join assigned interview; submit evaluation | No | No raw analytics |
+| `ANALYST` | No | No | No | Read job aggregates | No raw candidate profile by default | Read aggregate outcomes | Read aggregate outcomes | No | Approved aggregate analytics only |
 
-Legend: `Y` allowed subject to ownership/scope rules; `O` allowed only for
-specific resources or consent; `A` admin-only; `N` denied.
+Rules:
 
-| Resource | Action | Student | Recruiter | Admin | Ownership/scope rule |
-|---|---|---:|---:|---:|---|
-| Own account | read/update | Y | Y | Y | Own user only; role cannot be self-edited |
-| Authentication | login/logout/recovery | Y | Y | Y | Verification, rate limits, and session rules apply |
-| User directory | read | N | N | A | Minimum necessary fields; audit export |
-| Student profile | read/update | Y | O | A | Student owns; recruiter only after visibility/consent and legitimate company context |
-| Student evidence | create/update | Y | O | A | Student creates self-declared evidence; recruiter adds verification only in authorized workflow |
-| Resume | create/update/delete | Y | N | A | Student owns; deletion subject to retention/legal hold |
-| Resume | read | Y | O | A | Recruiter requires active application or explicit sharing consent |
-| Company | create/update | N | Y | A | Recruiter must be company member; verification changes are admin-controlled |
-| Company members | invite/remove/read | N | O | A | Company owner/admin member only; cannot remove final owner |
-| Company verification | submit/read/decide | N | O/A | A | Recruiter submits; admin decides |
-| Job | browse/read | Y | O | A | Published jobs public; drafts company-scoped |
-| Job | create/update/publish/pause/close | N | O | A | Recruiter company membership and job permission required |
-| Application | create/read own | Y | N | A | One active application per student/job unless policy permits |
-| Application | read/manage | N | O | A | Recruiter company scope; candidate consent/authorized application context |
-| Application stage | transition | N | O | A | Allowed transition graph and recruiter permission |
-| Recruiter note | create/read/update/delete | N | O | A | Company-scoped; candidate cannot read private notes |
-| Assessment content | browse | Y | O | A | Published content or assigned content |
-| Assessment | create/update/publish | N | O | A | Recruiter company scope; admin may moderate |
-| Assessment attempt | create/answer/submit/read own | Y | N | A | Assignment, time, attempt count, and server state |
-| Assessment result | read | Y | O | A | Student own result; recruiter only authorized assignment/application summary |
-| Coding problem | read | Y | O | A | Published/problem assignment visibility |
-| Code submission | create/read own | Y | O | A | Student owns; recruiter sees only assigned assessment result/submission policy |
-| Execution result | read | Y | O | A | Same scope as submission; hidden tests never exposed |
-| AI conversation | create/read/update/delete own | Y | N | O | Admin support access requires audit and minimum necessary scope |
-| AI usage/configuration | read usage own | Y | N | A | Provider keys/config never exposed to client |
-| AI interview | configure/participate own | Y | O | A | Recruiter only for assigned interview; text-only Release 1 |
-| Interview evaluation | read own/assigned | Y | O | A | Participant and authorized recruiter; private reviewer notes restricted |
-| Learning content | read/progress | Y | O | A | Published content; admin manages content |
-| Study planner | create/update/approve own | Y | N | A | Student approves major schedule changes |
-| Analytics | read own | Y | O | A | Recruiter gets company-scoped aggregates/candidate authorized summaries |
-| Notifications | read/update own | Y | Y | Y | User-owned read state |
-| Moderation case | read/respond | O | O | A | Subject sees permitted notice/appeal data only |
-| Moderation evidence | submit/read | O | O | A | Evidence access restricted by case role and audit |
-| Security events | read | N | N | A | Admin least privilege; sensitive fields redacted |
-| Audit logs | read | N | N | A | Append-only; privileged access itself audited |
-| Consent records | create/revoke own | Y | Y | A | Revocation affects future access; legal hold handled separately |
-| Data export/delete | request own | Y | Y | A | Identity verification, retention/legal-hold checks |
+- `OWNER` is the only role that can transfer ownership. A company must always
+  have exactly one active owner; ownership transfer and final-owner removal are
+  transactional and cannot leave zero owners.
+- No member may grant a role above their own authority. An owner may not remove
+  themselves unless another active owner exists after the transaction.
+- Deactivating a member revokes their company-scoped sessions/claims and all
+  uncompleted assignments immediately.
+- Company verification submission is a recruiter owner/hiring-manager action.
+  Review and approval/rejection are admin-only actions. The submitting recruiter
+  cannot approve the company.
 
-## Recruiter company permissions
+## Platform resource matrix
 
-`OWNER` can manage company membership and all company workflows. `HIRING_MANAGER`
-can manage jobs, applications, interviews, assessments, and decisions. `REVIEWER`
-can read assigned candidates and add evaluations but cannot publish jobs, manage
-members, or make final decisions. `INTERVIEWER` can access assigned interviews
-and submit evaluations only. `ANALYST` can read approved aggregate analytics
-without raw candidate content.
+`Own` means the user's own record. `Company` means active company membership
+plus the company permission table above. `Consent` means a current,
+purpose-specific consent or an application relationship that legally requires
+the minimum data.
 
-Company permissions are additive but never exceed the user's platform role,
-candidate consent, or resource assignment.
+| API module/resource | Student | Recruiter | Admin | Required condition |
+|---|---|---|---|---|
+| `/auth` | Own login/logout/recovery | Own login/logout/recovery | Provisioned login/logout/recovery | Verification, rate limits, CSRF, session state |
+| `/users/me` | Read/update own non-role fields | Read/update own non-role fields | Read/update own non-role fields | Role/status cannot be client-edited |
+| `/users` | Denied | Denied | Read/suspend/reactivate with audit | Least-privilege admin action |
+| `/students/me` | Full own profile | Denied | Support/admin scope | Own profile |
+| `/students/discover` | Own visibility settings | Read only discoverable candidates | Full support scope | Student `discoverable=true` plus recruiter company scope |
+| `/students/:id` | Own | Minimal profile only | Operational need | Candidate visibility and purpose check |
+| `/resumes` | Create/update/delete own | Read selected version only | Support/moderation scope | `RESUME_SHARING` consent or active application snapshot |
+| `/skills` | Manage own self-declared evidence | Add recruiter verification only in authorized workflow | Manage taxonomy/verification | Evidence source and actor required |
+| `/companies` | Denied | Company-scoped CRUD | Verify/suspend/manage | Active membership |
+| `/companies/:id/members` | Denied | Owner/Hiring Manager according to action | Full audited admin scope | Company scope; final-owner protection |
+| `/companies/:id/verification` | Denied | Owner/Hiring Manager submit/read | Review/approve/reject | Submitter cannot approve |
+| `/jobs` | Read published/apply | Company create/update/publish/manage | Moderate/manage | Company permission and job state |
+| `/applications` | Create/read/update own withdrawal | Company read/manage | Full audited scope | Candidate owns application; recruiter company scope |
+| `/applications/:id/stage` | Denied | Hiring Manager/Owner; Reviewer may screen only | Admin override with reason | Allowed transition graph and audit |
+| `/applications/:id/notes` | Denied private notes | Company authorized note access | Audited support scope | Private notes never exposed to candidate |
+| `/assessments` | Read published/assigned | Company create/manage | Full content moderation | Ownership, assignment, publication state |
+| `/assessment-attempts` | Own assigned attempt | No raw answers | Audited support scope | Assignment, timer, max attempts |
+| `/assessment-results` | Own | Authorized assignment summary | Operational scope | `ASSESSMENT_SHARING` or assignment context |
+| `/coding/problems` | Read published | Read assigned/public | Manage content | Publication status |
+| `/coding/submissions` | Create/read own | Read assigned assessment scope only | Audited support scope | Mode restrictions and ownership |
+| `/interviews` | Own participant sessions | Company-assigned sessions | Operational/support scope | Participant assignment and consent |
+| `/interviews/:id/evaluation` | Read own published evaluation | Submit/read authorized evaluation | Audit/support scope | Private reviewer notes restricted |
+| `/learning` | Read/update own progress | Read published content only | Manage content | Published content |
+| `/study-planner` | Full own plan; approve own recommendations | Denied | Support/config scope | Student approval for major changes |
+| `/ai/conversations` | Own create/read/delete | Denied | Restricted support read | Conversation owner; audited exception |
+| `/ai/interviews` | Own configure/participate | Assigned recruiter context only | Support/config scope | Session participant and consent |
+| `/analytics/student` | Own | Denied | Support/aggregate | Evidence and insufficient-data rules |
+| `/analytics/recruiter` | Denied | Company aggregates/authorized candidate summaries | Full aggregate | Company scope; no unauthorized raw data |
+| `/analytics/admin` | Denied | Denied | Full operational aggregates | Admin audit |
+| `/notifications` | Own | Own | Own | Recipient ownership |
+| `/consents` | Grant/revoke own | Grant/revoke own | Read/update policy only | Revocation affects future access |
+| `/security-events` | Denied | Denied | Read/resolve | Sensitive admin audit |
+| `/moderation` | Notice/appeal subset | Notice/appeal subset | Full workflow | AI flags require human decision |
+| `/audit-logs` | Denied | Denied | Read append-only records | Admin access is itself audited |
+| `/data-export` and `/data-delete` | Own request | Own request | Admin workflow | Identity verification, retention/legal hold |
 
-## Authorization enforcement
+## Discoverability and consent
 
-1. Authenticate session and reject invalid, expired, revoked, suspended, or
-   deleted sessions.
-2. Resolve role and company membership from the database, never from client data.
-3. Load the resource with an ownership/company/assignment predicate.
-4. Evaluate action permission and consent.
-5. Record sensitive reads, writes, exports, and denials in `AuditLog`.
-6. Return indistinguishable `404` responses where revealing resource existence
-   would leak private data.
+- Student discoverability defaults to off.
+- Enabling discovery exposes only the approved public profile projection:
+  name, headline, location, approved skills, education summary, projects, and
+  verified evidence summaries. It never exposes private contact data, AI chats,
+  study activity, raw assessment answers, or private recruiter notes.
+- Resume access requires `RESUME_SHARING` consent for the recruiter/company and
+  selected version, or an active application whose consent snapshot names the
+  selected version.
+- Assessment results require `ASSESSMENT_SHARING` consent or an assignment
+  created for the student's application.
+- Interview text/transcript/evaluation access requires participant assignment
+  and `INTERVIEW_TRANSCRIPT` consent where transcript sharing is enabled.
+- Media/device/recording consent is separate and is not implied by joining a
+  text interview. Revocation prevents future access and is recorded.
+
+## Admin privileged access
+
+Admin access is least-privilege by operation and purpose. User suspension,
+role changes, company approval, moderation decisions, raw content access,
+exports, policy changes, and secret/model configuration require:
+
+- explicit permission;
+- reason/purpose;
+- request ID and actor/session metadata;
+- before/after or decision snapshot;
+- append-only `AuditLog`;
+- dual review for production policy changes or severe account actions where
+  configured.
+
+Admins do not receive provider secrets, password hashes, refresh tokens, or
+unnecessary raw AI prompts.
+
+## Suspension and session revocation
+
+Suspension transactionally sets `User.status=SUSPENDED`, `suspendedAt`,
+reason/case reference, revokes all active sessions and refresh-token families,
+cancels future jobs/assignments where policy requires, and emits security,
+notification, and audit events. Reactivation requires an authorized admin
+decision. Password reset and role/company membership changes revoke affected
+sessions according to policy.
 
