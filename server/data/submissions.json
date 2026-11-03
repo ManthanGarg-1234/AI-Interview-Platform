@@ -433,52 +433,5 @@
     "executionTimeMs": null,
     "errorSummary": "",
     "completedAt": "2026-10-25T12:47:35.064Z"
-  },
-  {
-    "id": "6c97f488-93b0-44ae-8a38-daacd1b6104b",
-    "idempotencyKey": "test-local-runner-1793722744222",
-    "userId": "demo-candidate",
-    "problemId": "sum-pair",
-    "language": "Java",
-    "type": "submit",
-    "status": "Completed",
-    "verdict": "Accepted",
-    "createdAt": "2026-11-03T16:19:04.229Z",
-    "passedTests": 2,
-    "totalTests": 2,
-    "executionTimeMs": null,
-    "completedAt": "2026-11-03T16:19:07.669Z"
-  },
-  {
-    "id": "5275ef06-5e15-4f55-94bf-8dd46d76a642",
-    "idempotencyKey": "test-compile-1793722747674",
-    "userId": "demo-candidate",
-    "problemId": "sum-pair",
-    "language": "Java",
-    "type": "submit",
-    "status": "Completed",
-    "verdict": "Compilation Error",
-    "createdAt": "2026-11-03T16:19:07.681Z",
-    "passedTests": 0,
-    "totalTests": 2,
-    "executionTimeMs": null,
-    "errorSummary": "Main.java:1: error: reached end of file while parsing\r\npublic class Main {\r\n                   ^\r\n1 error\r\n",
-    "completedAt": "2026-11-03T16:19:08.574Z"
-  },
-  {
-    "id": "65fb9d0e-5633-4f81-b03e-9ee859249b2f",
-    "idempotencyKey": "test-wrong-1793722748578",
-    "userId": "demo-candidate",
-    "problemId": "sum-pair",
-    "language": "Java",
-    "type": "submit",
-    "status": "Completed",
-    "verdict": "Wrong Answer",
-    "createdAt": "2026-11-03T16:19:08.582Z",
-    "passedTests": 0,
-    "totalTests": 2,
-    "executionTimeMs": null,
-    "errorSummary": "",
-    "completedAt": "2026-11-03T16:19:09.959Z"
   }
 ]
