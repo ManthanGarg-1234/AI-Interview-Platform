@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Topic Assessment | CareerPrepAI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body data-role="candidate">
+    <main class="interview-shell">
+        <header class="interview-top"><a class="side-brand" href="candidate.html"><span
+                    class="brand-mark">CP</span><strong>CareerPrepAI</strong></a><span class="eyebrow">Technical
+                assessment</span><button class="button ghost logout">Exit</button></header>
+        <section class="card question-panel assessment-panel">
+            <div class="section-heading">
+                <div><span class="eyebrow">Evidence-based practice</span>
+                    <h1 id="assessment-title">Assessment</h1>
+                </div><span id="assessment-progress">Question 1</span>
+            </div>
+            <div class="progress-bar"><span id="assessment-fill"></span></div>
+            <div id="assessment-question"></div>
+            <div id="assessment-options" class="answer-options"></div>
+            <div class="question-nav"><button id="assessment-prev" class="button secondary">← Previous</button><button
+                    id="assessment-next" class="button primary">Next →</button><button id="assessment-submit"
+                    class="button success hidden">Submit assessment</button></div>
+            <div id="assessment-result"></div>
+        </section>
+    </main>
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/assessment.js"></script>
+</body>
+
+</html>

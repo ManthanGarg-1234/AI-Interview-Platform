@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>CareerPrepAI | Demo Access</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="auth-page">
+    <main class="auth-shell">
+        <section class="auth-hero"><span class="eyebrow">CareerPrepAI</span>
+            <h1>Practice with purpose.<br><span>Grow with evidence.</span></h1>
+            <p>A connected career-readiness prototype for students, recruiters, and platform administrators.</p>
+            <div class="hero-points"><span>✓ Explainable evaluation</span><span>✓ Shared recruitment
+                    records</span><span>✓ Frontend demo only</span></div>
+        </section>
+        <section class="auth-card card">
+            <div class="brand-mark">IO</div>
+            <h2>Sign in to your workspace</h2>
+            <p class="muted">Demo authentication only. Passwords are never stored in this browser.</p>
+            <form id="login-form"><label for="email">Email address</label><input id="email" type="email"
+                    autocomplete="email" placeholder="student@intervue.demo" required><label
+                    for="password">Password</label>
+                <div class="password-field"><input id="password" type="password" autocomplete="current-password"
+                        placeholder="Any demo password" required><button type="button" class="password-toggle"
+                        aria-label="Show password">Show</button></div><label class="check-label"><input id="remember"
+                        type="checkbox"> Remember this demo session</label><button class="button primary full"
+                    type="submit">Sign in <span>→</span></button>
+            </form>
+            <p id="login-message" class="form-message"></p>
+            <div class="auth-links"><a href="forgot-password.html">Forgot password?</a><a href="signup.html">Create
+                    student or HR account</a></div>
+            <div class="demo-access"><strong>Demo accounts</strong><button type="button"
+                    data-demo-email="student@intervue.demo">Student</button><button type="button"
+                    data-demo-email="hr@intervue.demo">HR</button><button type="button"
+                    data-demo-email="admin@intervue.demo">Admin</button></div><button
+                class="button ghost full reset-demo" type="button">Reset demo data</button><small
+                class="disclaimer">Production authentication requires a backend, password hashing, server-side
+                authorization, and secure recovery flows.</small>
+        </section>
+    </main>
+    <script src="js/data.js"></script>
+    <script src="js/auth.js"></script>
+</body>
+
+</html>

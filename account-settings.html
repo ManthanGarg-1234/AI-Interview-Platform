@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Account Settings | CareerPrepAI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="app-shell">
+        <aside class="sidebar"><a class="side-brand" id="settings-home"><span
+                    class="brand-mark">CP</span><strong>CareerPrepAI</strong></a>
+            <nav><a href="profile.html">◎ <span>My profile</span></a><a class="active" href="account-settings.html">⚙
+                    <span>Account settings</span></a></nav>
+        </aside>
+        <main class="main-content">
+            <header class="topbar">
+                <div><span class="eyebrow">Account</span>
+                    <h1>Settings</h1>
+                </div><button class="button ghost logout">Log out</button>
+            </header>
+            <div id="settings-message" class="notice hidden"></div>
+            <section class="settings-grid">
+                <section class="card profile-card"><span class="eyebrow">Preferences</span>
+                    <h2>Personalize your workspace</h2>
+                    <form id="settings-form"><label>Theme<select id="settings-theme">
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                            </select></label><label class="check-label"><input id="notify-product" type="checkbox">
+                            Product updates</label><label class="check-label"><input id="notify-applications"
+                                type="checkbox"> Application and interview updates</label><button class="button primary"
+                            type="submit">Save preferences</button></form>
+                </section>
+                <section class="card profile-card"><span class="eyebrow">Demo security</span>
+                    <h2>Session information</h2>
+                    <p class="muted">Signed in as <strong id="settings-email"></strong>.</p>
+                    <p class="muted">This is a browser-only demo. No password is stored, and localStorage does not
+                        provide secure authorization.</p><button class="button danger logout">Sign out</button>
+                </section>
+            </section>
+        </main>
+    </div>
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/settings.js"></script>
+</body>
+
+</html>
