@@ -8,7 +8,6 @@
 - Added cookie-based authentication primitives, session persistence, CSRF checks,
   role guards, registration, login, refresh, logout, and student profile routes.
 - Added Docker Compose PostgreSQL and Redis services.
-- Preserved the legacy static pages and coding API unchanged.
 - Verification: backend regression tests 4/4 passed; frontend tests 1/1 passed;
   Vite production build passed.
 
@@ -68,9 +67,26 @@
   production build passed; Prisma validation and client generation passed.
 - Live PostgreSQL/Redis processing remains pending because Docker is unavailable.
 
+## 2026-11-03 - Phase 4 coding platform foundation
+
+- Added authenticated `/api/v1/coding` problem catalogue, problem detail,
+  starter-code, run, submission, history, and statistics APIs.
+- Extended the Prisma schema with language configurations, asynchronous run
+  records, student problem progress, and submission status history while
+  retaining the existing coding entities and assessment relations.
+- Added a Prisma seed for two published practice problems and all four initial
+  language configurations.
+- Added the Student Portal coding practice catalogue and problem detail screen
+  with Monaco Editor, language selection, starter-code loading, reset, run, and
+  submit actions.
+- Verification: Prisma validation, Prisma client generation, backend tests
+  10/10, frontend tests 1/1, and production build passed. Live PostgreSQL,
+  Redis/BullMQ processing, migrations, and Judge0 execution remain unverified
+  because no database or Redis service is available in this environment.
+
 ## Current phase
 
-**Phase 2: Detailed architecture design, approval gate.**
+**Phase 4: Student coding platform foundation.**
 
 ## Completed
 

@@ -269,6 +269,8 @@ model User {
   aiUsage            AIUsageRecord[]
   aiEvaluations      AIEvaluation[]
   bookmarks          Bookmark[]
+  codingProgress     StudentProblemProgress[]
+  codeRuns           CodeRun[]
   auditLogs          AuditLog[]       @relation("AuditActor")
   securityEvents     SecurityEvent[]  @relation("SecuritySubject")
   reportedCases      ModerationCase[] @relation("ModerationReporter")
@@ -716,6 +718,11 @@ model CodingProblem {
   slug              String          @unique @db.VarChar(180)
   title             String          @db.VarChar(240)
   statement         String
+  inputFormat       String?
+  outputFormat      String?
+  constraints       Json?
+  examples          Json?
+  explanation       String?
   difficulty        String          @db.VarChar(32)
   starterCode       Json?
   timeLimitMs       Int             @default(2000)
@@ -723,11 +730,26 @@ model CodingProblem {
   status            String          @default("DRAFT")
   topics            ProblemTopic[]
   testCases         TestCase[]
+  languageConfigs   ProblemLanguageConfig[]
   submissions       CodeSubmission[]
+  codeRuns          CodeRun[]
+  progress          StudentProblemProgress[]
   bookmarks         Bookmark[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   @@index([status, difficulty])
+}
+
+model ProblemLanguageConfig {
+  id                String         @id @default(uuid()) @db.Uuid
+  problemId         String         @db.Uuid
+  language          String         @db.VarChar(40)
+  starterCode       String
+  functionSignature String?
+  enabled           Boolean        @default(true)
+  problem           CodingProblem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@unique([problemId, language])
+  @@index([language, enabled])
 }
 
 model ProblemTopic {
@@ -772,10 +794,63 @@ model CodeSubmission {
   problem           CodingProblem   @relation(fields: [problemId], references: [id], onDelete: Restrict)
   assignment        AssessmentAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
   executionResults  ExecutionResult[]
+  statusHistory     SubmissionStatusHistory[]
+  codeRuns          CodeRun[]
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
   @@index([problemId, status])
   @@index([status, queuedAt])
+}
+
+model CodeRun {
+  id                String          @id @default(uuid()) @db.Uuid
+  userId            String          @db.Uuid
+  problemId         String          @db.Uuid
+  submissionId      String?         @db.Uuid
+  language          String          @db.VarChar(40)
+  sourceCode        String
+  customInput       String?
+  status            SubmissionStatus @default(RECEIVED)
+  verdict           Verdict          @default(PENDING)
+  provider          String?         @db.VarChar(80)
+  executionTimeMs   Int?
+  memoryKb          Int?
+  stdout            String?
+  stderr            String?
+  compileOutput     String?
+  createdAt         DateTime        @default(now())
+  completedAt       DateTime?
+  user              User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  problem           CodingProblem   @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  submission        CodeSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model SubmissionStatusHistory {
+  id             String           @id @default(uuid()) @db.Uuid
+  submissionId   String           @db.Uuid
+  fromStatus     SubmissionStatus?
+  toStatus       SubmissionStatus
+  note           String?
+  createdAt      DateTime         @default(now())
+  submission     CodeSubmission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  @@index([submissionId, createdAt])
+}
+
+model StudentProblemProgress {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  problemId      String          @db.Uuid
+  status         String          @default("UNSOLVED")
+  attempts       Int             @default(0)
+  solvedAt       DateTime?
+  lastSubmittedAt DateTime?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem        CodingProblem   @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@unique([userId, problemId])
+  @@index([userId, status])
+  @@index([problemId, status])
 }
 
 model ExecutionResult {

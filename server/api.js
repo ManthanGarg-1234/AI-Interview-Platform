@@ -10,6 +10,7 @@ const { getPrisma } = require("./prisma");
 const storage = require("./private-storage");
 const { enqueueResumeProcessing } = require("./resume-processing");
 const { enqueueResumeAnalysis, processResumeAnalysis } = require("./resume-analysis");
+const coding = require("./coding");
 
 const router = express.Router();
 const upload = multer({
@@ -185,5 +186,15 @@ router.patch("/me/profile-suggestions/:id", authenticate, requireRole("STUDENT")
     res.json({ data: updated });
   } catch (error) { next(error); }
 });
+
+router.get("/coding/problems", authenticate, requireRole("STUDENT"), coding.listProblems);
+router.get("/coding/problems/:id", authenticate, requireRole("STUDENT"), coding.getProblem);
+router.get("/coding/problems/:id/starter-code", authenticate, requireRole("STUDENT"), coding.starterCode);
+router.post("/coding/runs", authenticate, requireRole("STUDENT"), coding.createRun);
+router.get("/coding/runs/:id", authenticate, requireRole("STUDENT"), coding.getRun);
+router.post("/coding/submissions", authenticate, requireRole("STUDENT"), coding.createSubmission);
+router.get("/coding/submissions", authenticate, requireRole("STUDENT"), coding.history);
+router.get("/coding/submissions/:id", authenticate, requireRole("STUDENT"), coding.getSubmission);
+router.get("/coding/stats", authenticate, requireRole("STUDENT"), coding.stats);
 
 module.exports = router;

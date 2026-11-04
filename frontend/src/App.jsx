@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./lib/api";
 import LoginPage from "./pages/LoginPage";
@@ -6,12 +6,17 @@ import RegisterPage from "./pages/RegisterPage";
 import PortalLayout from "./components/PortalLayout";
 import StudentProfilePage from "./pages/StudentProfilePage";
 import ResumeAnalysisPage from "./pages/ResumeAnalysisPage";
+import CodingPracticePage from "./pages/CodingPracticePage";
+import CodingProblemPage from "./pages/CodingProblemPage";
 
 function useCurrentUser() {
+  const location = useLocation();
+  const publicRoute = location.pathname === "/login" || location.pathname === "/register";
   return useQuery({
     queryKey: ["current-user"],
     queryFn: async () => (await api.get("/auth/me")).data.data,
     retry: false,
+    enabled: !publicRoute,
   });
 }
 
@@ -57,6 +62,8 @@ function AppRoutes() {
       <Route path="/app" element={<ProtectedRoute><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/profile" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><StudentProfilePage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/resume-analysis" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><ResumeAnalysisPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/coding" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><CodingPracticePage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/coding/:slug" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><CodingProblemPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/*" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/*" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/admin/*" element={<ProtectedRoute roles={["ADMIN"]}><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />

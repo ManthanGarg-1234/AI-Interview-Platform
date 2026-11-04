@@ -28,22 +28,6 @@ errors.
 | Notifications | list/read/preferences | Current user |
 | Admin/Security | users, moderation, events, audit, settings | Admin |
 
-## Existing compatibility API
-
-The current unversioned endpoints remain a migration reference:
-
-- `GET /api/health`
-- `GET /api/problems`
-- `GET /api/problems/:id`
-- `POST /api/submissions/run`
-- `POST /api/submissions/submit`
-- `GET /api/submissions/:id`
-- `GET /api/users/me/submissions`
-
-They currently use `x-demo-user-id`, JSON-file persistence, and Java-only
-execution. They must not be treated as production authentication or a final
-contract.
-
 ## Endpoint contract requirements
 
 Each final endpoint specification must document HTTP method/path, auth and role,

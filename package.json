@@ -7,7 +7,9 @@
     "start": "node server/index.js",
     "dev": "nodemon server/index.js",
     "worker": "node server/resume-worker.js",
+    "coding-worker": "node server/coding-worker.js",
     "build": "npm --prefix frontend run build",
+    "db:seed": "node prisma/seed.js",
     "test": "node --test server/tests/*.test.js"
   },
   "engines": {
@@ -27,6 +29,9 @@
     "morgan": "^1.12.1",
     "multer": "^2.5.0",
     "zod": "^4.6.7"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
