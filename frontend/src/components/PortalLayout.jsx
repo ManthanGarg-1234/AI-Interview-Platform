@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Bell,
+  BookOpen,
   Bot,
   BriefcaseBusiness,
   CalendarDays,
@@ -19,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 
@@ -31,6 +32,7 @@ const navigation = {
     { label: "Study planner", to: "/student/planner", icon: CalendarDays },
     { label: "AI mentor", to: "/student/mentor", icon: Bot },
     { label: "Resources", to: "/student/resources", icon: Library },
+    { label: "Subjects", to: "/student/subjects", icon: BookOpen },
     { label: "Notifications", to: "/notifications", icon: Bell, badge: true },
     { label: "Profile", to: "/student/profile", icon: UserRound },
     { label: "Resume analysis", to: "/student/resume-analysis", icon: BriefcaseBusiness },
@@ -49,6 +51,8 @@ const navigation = {
   ],
   ADMIN: [
     { label: "Dashboard", to: "/admin", icon: LayoutDashboard, end: true },
+    { label: "DSA sheets", to: "/admin/dsa-sheets", icon: Code2 },
+    { label: "Target roles", to: "/admin/target-roles", icon: BriefcaseBusiness },
     { label: "Security", to: "/admin/security", icon: ShieldCheck },
   ],
 };
@@ -69,13 +73,14 @@ function useUnreadCount(enabled) {
 export default function PortalLayout({ user, children }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const links = navigation[user?.role] || navigation.STUDENT;
   const isStudent = user?.role === "STUDENT";
   const { data: unreadCount } = useUnreadCount(isStudent);
 
   // Close sidebar on route change (mobile)
-  useEffect(() => { setOpen(false); }, []);
+  useEffect(() => { setOpen(false); }, [location.pathname]);
 
   async function logout() {
     await api.post("/auth/logout").catch(() => undefined);
@@ -102,7 +107,7 @@ export default function PortalLayout({ user, children }) {
       >
         {/* Logo */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <Link to="/student" className="flex items-center gap-3">
+          <Link to="/app" className="flex items-center gap-3">
             <span className="grid size-9 place-items-center rounded-xl bg-indigo-600 text-sm font-black text-white">
               CP
             </span>

@@ -42,8 +42,16 @@ function scoreFor(problem, wrongAttempts) {
 
 router.get("/", async (req, res, next) => {
   try {
-    const contests = await getPrisma().contest.findMany({ where: { status: { in: ["PUBLISHED", "LIVE", "ENDED"] } }, include: { problems: true }, orderBy: { startsAt: "desc" }, take: 100 });
-    res.json({ data: contests.map(publicContest) });
+    const contests = await getPrisma().contest.findMany({
+      where: { status: { in: ["PUBLISHED", "LIVE", "ENDED"] } },
+      include: {
+        problems: true,
+        registrations: { where: { userId: req.auth.sub }, select: { id: true } },
+      },
+      orderBy: { startsAt: "desc" },
+      take: 100,
+    });
+    res.json({ data: contests.map((contest) => ({ ...publicContest(contest), registered: contest.registrations.length > 0 })) });
   } catch (error) { next(error); }
 });
 

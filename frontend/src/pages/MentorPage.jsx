@@ -8,6 +8,7 @@ export default function MentorPage() {
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [message, setMessage] = useState("");
   const [localMessages, setLocalMessages] = useState([]);
+  const [responseProvider, setResponseProvider] = useState("");
   const bottomRef = useRef(null);
 
   // Load conversation history list
@@ -41,6 +42,7 @@ export default function MentorPage() {
       const newData = data.data;
       setActiveConversationId(newData.id);
       setLocalMessages(newData.messages);
+      setResponseProvider(newData.provider || "");
       setMessage("");
       client.invalidateQueries({ queryKey: ["mentor-conversations"] });
     },
@@ -64,6 +66,7 @@ export default function MentorPage() {
   function startNewConversation() {
     setActiveConversationId(null);
     setLocalMessages([]);
+    setResponseProvider("");
   }
 
   return (
@@ -123,6 +126,9 @@ export default function MentorPage() {
             <p className="text-xs text-slate-500">
               Guidance based on your performance data. Responses are suggestions, not verified records.
             </p>
+            {responseProvider === "local-fallback" && (
+              <p role="status" className="mt-1 text-xs font-semibold text-amber-700">AI service unavailable; showing local guidance.</p>
+            )}
           </div>
           <button
             onClick={startNewConversation}

@@ -8,9 +8,9 @@ const { getPrisma } = require("./prisma");
 const router = express.Router();
 const planSchema = z.object({
   targetRole: z.string().trim().min(2).max(200),
-  deadline: z.coerce.date().nullable().optional(),
+  deadline: z.coerce.date().nullable().optional().refine((value) => !value || value > new Date(), "Deadline must be in the future."),
   dailyMinutes: z.number().int().min(15).max(720),
-  goals: z.array(z.string().trim().min(1).max(240)).max(20).default([]),
+  goals: z.array(z.string().trim().min(1).max(240)).min(1).max(20),
 });
 
 function average(values) {
@@ -170,8 +170,29 @@ router.get("/activities", async (req, res, next) => {
 
 router.get("/resources", async (req, res, next) => {
   try {
-    const resources = await getPrisma().learningResource.findMany({ where: { status: "PUBLISHED", ...(req.query.topicId ? { topicId: String(req.query.topicId) } : {}), ...(req.query.subjectId ? { subjectId: String(req.query.subjectId) } : {}), ...(req.query.search ? { title: { contains: String(req.query.search), mode: "insensitive" } } : {}) }, orderBy: { title: "asc" }, take: 100, include: { topic: { select: { name: true } }, subject: { select: { name: true } } } });
-    res.json({ data: resources });
+    const profileId = await profileFor(req.auth.sub);
+    const resources = await getPrisma().learningResource.findMany({
+      where: {
+        status: "PUBLISHED",
+        ...(req.query.topicId ? { topicId: String(req.query.topicId) } : {}),
+        ...(req.query.subjectId ? { subjectId: String(req.query.subjectId) } : {}),
+        ...(req.query.search ? { title: { contains: String(req.query.search), mode: "insensitive" } } : {}),
+        ...(req.query.kind ? { kind: String(req.query.kind) } : {}),
+      },
+      orderBy: { title: "asc" },
+      take: 100,
+      include: {
+        topic: { select: { name: true } },
+        subject: { select: { name: true } },
+        progress: { where: { studentProfileId: profileId }, select: { status: true, percent: true } },
+      },
+    });
+    res.json({
+      data: resources.map(({ progress, ...resource }) => ({
+        ...resource,
+        progress: progress[0] || { status: "NOT_STARTED", percent: 0 },
+      })),
+    });
   } catch (error) { next(error); }
 });
 
@@ -179,9 +200,25 @@ router.post("/resources/:id/progress", async (req, res, next) => {
   try {
     const input = z.object({ percent: z.number().min(0).max(100) }).parse(req.body);
     const profileId = await profileFor(req.auth.sub);
-    const resource = await getPrisma().learningResource.findFirst({ where: { id: req.params.id, status: "PUBLISHED" } });
+    const prisma = getPrisma();
+    const resource = await prisma.learningResource.findFirst({ where: { id: req.params.id, status: "PUBLISHED" } });
     if (!resource) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resource not found." } });
-    const progress = await getPrisma().learningProgress.upsert({ where: { studentProfileId_resourceId_topicId: { studentProfileId: profileId, resourceId: resource.id, topicId: resource.topicId } }, update: { percent: input.percent, status: input.percent >= 100 ? "COMPLETED" : "IN_PROGRESS", lastActivityAt: new Date() }, create: { studentProfileId: profileId, resourceId: resource.id, topicId: resource.topicId, percent: input.percent, status: input.percent >= 100 ? "COMPLETED" : "IN_PROGRESS" } });
+    const progress = await prisma.$transaction(async (tx) => {
+      const current = await tx.learningProgress.findFirst({
+        where: { studentProfileId: profileId, resourceId: resource.id, topicId: resource.topicId },
+        select: { id: true },
+      });
+      const progressData = {
+        percent: input.percent,
+        status: input.percent >= 100 ? "COMPLETED" : "IN_PROGRESS",
+        lastActivityAt: new Date(),
+      };
+      return current
+        ? tx.learningProgress.update({ where: { id: current.id }, data: progressData })
+        : tx.learningProgress.create({
+          data: { studentProfileId: profileId, resourceId: resource.id, topicId: resource.topicId, ...progressData },
+        });
+    });
     res.json({ data: progress });
   } catch (error) { next(error); }
 });
@@ -190,10 +227,33 @@ router.post("/plans", async (req, res, next) => {
   try {
     const input = planSchema.parse(req.body);
     const profileId = await profileFor(req.auth.sub);
-    const plan = await getPrisma().studyPlan.create({ data: { studentProfileId: profileId, targetRole: input.targetRole, deadline: input.deadline || null, dailyMinutes: input.dailyMinutes, goals: { create: input.goals.map((title, index) => ({ title, priority: index === 0 ? "HIGH" : "MEDIUM", status: "OPEN" })) } } });
-    const goals = await getPrisma().studyGoal.findMany({ where: { studyPlanId: plan.id }, orderBy: { id: "asc" } });
-    await getPrisma().studyTask.createMany({ data: goals.map((goal, index) => ({ studyPlanId: plan.id, goalId: goal.id, title: `Practice: ${goal.title}`, dueAt: new Date(Date.now() + (index + 1) * 86400000), priority: goal.priority, status: "OPEN", source: "STUDENT_GOAL" })) });
-    res.status(201).json({ data: await getPrisma().studyPlan.findUnique({ where: { id: plan.id }, include: { goals: true, tasks: true } }) });
+    const plan = await getPrisma().$transaction(async (tx) => {
+      const created = await tx.studyPlan.create({
+        data: {
+          studentProfileId: profileId,
+          targetRole: input.targetRole,
+          deadline: input.deadline || null,
+          dailyMinutes: input.dailyMinutes,
+          goals: { create: input.goals.map((title, index) => ({ title, priority: index === 0 ? "HIGH" : "MEDIUM", status: "OPEN" })) },
+        },
+      });
+      const goals = await tx.studyGoal.findMany({ where: { studyPlanId: created.id }, orderBy: { id: "asc" } });
+      await tx.studyTask.createMany({
+        data: goals.map((goal, index) => ({
+          studyPlanId: created.id,
+          goalId: goal.id,
+          title: `Practice: ${goal.title}`,
+          dueAt: input.deadline
+            ? new Date(Math.min(Date.now() + (index + 1) * 86400000, input.deadline.getTime()))
+            : new Date(Date.now() + (index + 1) * 86400000),
+          priority: goal.priority,
+          status: "OPEN",
+          source: "STUDENT_GOAL",
+        })),
+      });
+      return tx.studyPlan.findUnique({ where: { id: created.id }, include: { goals: true, tasks: { orderBy: { dueAt: "asc" } } } });
+    });
+    res.status(201).json({ data: plan });
   } catch (error) { next(error); }
 });
 
@@ -206,8 +266,21 @@ router.post("/plans/:planId/tasks/:taskId/complete", async (req, res, next) => {
     const profileId = await profileFor(req.auth.sub);
     const task = await getPrisma().studyTask.findFirst({ where: { id: req.params.taskId, studyPlanId: req.params.planId, plan: { studentProfileId: profileId } } });
     if (!task) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study task not found." } });
-    const completion = await getPrisma().studyTaskCompletion.upsert({ where: { taskId_completedByUserId: { taskId: task.id, completedByUserId: req.auth.sub } }, update: { completedAt: new Date() }, create: { taskId: task.id, completedByUserId: req.auth.sub } });
-    await getPrisma().studyTask.update({ where: { id: task.id }, data: { status: "COMPLETED" } });
+    const completion = await getPrisma().$transaction(async (tx) => {
+      const result = await tx.studyTaskCompletion.upsert({
+        where: { taskId_completedByUserId: { taskId: task.id, completedByUserId: req.auth.sub } },
+        update: { completedAt: new Date() },
+        create: { taskId: task.id, completedByUserId: req.auth.sub },
+      });
+      await tx.studyTask.update({ where: { id: task.id }, data: { status: "COMPLETED" } });
+      if (task.goalId) {
+        const remainingGoalTasks = await tx.studyTask.count({ where: { goalId: task.goalId, status: { not: "COMPLETED" } } });
+        if (remainingGoalTasks === 0) await tx.studyGoal.update({ where: { id: task.goalId }, data: { status: "COMPLETED" } });
+      }
+      const remainingPlanTasks = await tx.studyTask.count({ where: { studyPlanId: req.params.planId, status: { not: "COMPLETED" } } });
+      if (remainingPlanTasks === 0) await tx.studyPlan.update({ where: { id: req.params.planId }, data: { status: "COMPLETED" } });
+      return result;
+    });
     res.json({ data: completion });
   } catch (error) { next(error); }
 });
@@ -235,11 +308,22 @@ router.post("/mentor/conversations", async (req, res, next) => {
       // New conversation
       conversation = await prisma.aiConversation.create({ data: { userId: req.auth.sub, subject: "Student mentor", topic: "Performance", messages: { create: { role: "USER", content: input.message } } }, include: { messages: true } });
     }
-    const reply = await mentorReply(input.message, {
+    const mentorContext = {
       weakestTopic: context.assessments.accuracy != null && context.assessments.accuracy < 60 ? "assessment accuracy" : "consistent practice",
       performance: { coding: context.coding, interviews: context.interviews, assessments: context.assessments },
       skills: context.skills.slice(0, 10),
-    });
+    };
+    let reply;
+    try {
+      reply = await mentorReply(input.message, mentorContext);
+    } catch (error) {
+      console.warn("AI mentor response failed; returning local guidance.", { name: error.name, code: error.code });
+      reply = {
+        text: `The AI mentor service is temporarily unavailable. For now, start with ${mentorContext.weakestTopic}, review one example related to “${input.message.slice(0, 240)}”, then solve one small practice question and note what to improve.`,
+        provider: "local-fallback",
+        modelAlias: "local-mentor-fallback-v1",
+      };
+    }
     const assistant = await prisma.aiMessage.create({ data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias } });
     // Refresh messages for response
     const allMessages = await prisma.aiMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: "asc" } });
