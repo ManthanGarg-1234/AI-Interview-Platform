@@ -1,0 +1,17 @@
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
+import { api, getApiError } from "../lib/api";
+
+export default function InterviewRoomPage() {
+  const { id } = useParams(); const navigate = useNavigate(); const [answer, setAnswer] = useState(""); const [message, setMessage] = useState("");
+  const query = useQuery({ queryKey: ["interview", id], queryFn: async () => (await api.get(`/me/interviews/${id}`)).data.data });
+  const start = useMutation({ mutationFn: () => api.post(`/me/interviews/${id}/start`), onSuccess: () => query.refetch(), onError: (error) => setMessage(getApiError(error)) });
+  const submit = useMutation({ mutationFn: (complete) => api.post(`/me/interviews/${id}/answers`, { questionId: current.id, text: answer, complete }), onSuccess: ({ data }) => { setAnswer(""); if (data.data.status === "COMPLETED") navigate(`/student/interviews/${id}`); else query.refetch(); }, onError: (error) => setMessage(getApiError(error)) });
+  if (query.isLoading) return <p className="text-slate-500">Loading interview…</p>;
+  if (query.isError) return <p className="rounded-xl bg-red-50 p-5 text-red-700">{getApiError(query.error)}</p>;
+  const interview = query.data; const current = interview.questions?.find((question) => !question.answers?.length) || interview.questions?.at(-1);
+  if (interview.status === "CONFIGURED") return <section className="max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"><h1 className="text-2xl font-bold">Ready when you are</h1><p className="mt-2 text-slate-600">{interview.configuration.targetRole} · {interview.configuration.questionCount} questions</p><button onClick={() => start.mutate()} disabled={start.isPending} className="mt-6 rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white">{start.isPending ? "Preparing…" : "Begin interview"}</button>{message && <p className="mt-3 text-red-600">{message}</p>}</section>;
+  if (interview.status === "COMPLETED") return <section className="rounded-2xl bg-emerald-50 p-8 text-emerald-800"><h1 className="text-2xl font-bold">Interview complete</h1><button onClick={() => navigate(`/student/interviews/${id}`)} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">View results</button></section>;
+  return <section className="max-w-4xl"><div className="flex justify-between"><p className="text-sm font-bold uppercase tracking-widest text-indigo-600">Question {current?.sequence} of {interview.configuration.questionCount}</p><span className="text-sm text-slate-500">{interview.configuration.type}</span></div><div className="mt-5 rounded-2xl border border-slate-200 bg-white p-7 shadow-sm"><h1 className="text-2xl font-bold text-slate-950">{current?.text}</h1><textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows="10" placeholder="Write your answer…" className="mt-6 w-full rounded-xl border border-slate-300 p-4" /><div className="mt-4 flex flex-wrap gap-3"><button disabled={!answer.trim() || submit.isPending} onClick={() => submit.mutate(false)} className="rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white disabled:opacity-50">Submit answer</button><button disabled={!answer.trim() || submit.isPending} onClick={() => submit.mutate(true)} className="rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-700 disabled:opacity-50">Submit and finish</button></div>{message && <p className="mt-3 text-red-600">{message}</p>}</div></section>;
+}

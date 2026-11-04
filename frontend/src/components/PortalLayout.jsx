@@ -1,11 +1,11 @@
-import { Code2, LayoutDashboard, LogOut, Menu, Settings, ShieldCheck, UserRound, Users, BriefcaseBusiness } from "lucide-react";
+import { Code2, LayoutDashboard, LogOut, Menu, Settings, ShieldCheck, UserRound, Users, BriefcaseBusiness, MessageSquare, ClipboardCheck, BarChart3, CalendarDays, Bot, Library } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 
 const navigation = {
-  STUDENT: [{ label: "Dashboard", to: "/student", icon: LayoutDashboard }, { label: "Profile", to: "/student/profile", icon: UserRound }, { label: "Resume analysis", to: "/student/resume-analysis", icon: BriefcaseBusiness }, { label: "Coding practice", to: "/student/coding", icon: Code2 }],
+  STUDENT: [{ label: "Dashboard", to: "/student", icon: LayoutDashboard }, { label: "Performance", to: "/student/analytics", icon: BarChart3 }, { label: "Study planner", to: "/student/planner", icon: CalendarDays }, { label: "AI mentor", to: "/student/mentor", icon: Bot }, { label: "Resources", to: "/student/resources", icon: Library }, { label: "Notifications", to: "/notifications", icon: MessageSquare }, { label: "Profile", to: "/student/profile", icon: UserRound }, { label: "Resume analysis", to: "/student/resume-analysis", icon: BriefcaseBusiness }, { label: "Coding practice", to: "/student/coding", icon: Code2 }, { label: "AI interviews", to: "/student/interviews", icon: MessageSquare }, { label: "Assessments", to: "/student/assessments", icon: ClipboardCheck }],
   RECRUITER: [{ label: "Dashboard", to: "/recruiter", icon: LayoutDashboard }, { label: "Jobs", to: "/recruiter/jobs", icon: BriefcaseBusiness }, { label: "Candidates", to: "/recruiter/candidates", icon: Users }],
   ADMIN: [{ label: "Dashboard", to: "/admin", icon: LayoutDashboard }, { label: "Security", to: "/admin/security", icon: ShieldCheck }],
 };

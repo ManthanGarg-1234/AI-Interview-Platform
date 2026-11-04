@@ -40,6 +40,15 @@ test("all student profile and resume surfaces reject unauthenticated access", as
     "/api/v1/me/skills",
     "/api/v1/me/resumes",
     "/api/v1/me/resume-versions/not-a-real-version/download",
+    "/api/v1/me/interviews",
+    "/api/v1/me/interviews/dashboard",
+    "/api/v1/me/assessments",
+    "/api/v1/me/assessments/assignments",
+    "/api/v1/me/assessments/attempts",
+    "/api/v1/me/notifications",
+    "/api/v1/me/notifications/preferences",
+    "/api/v1/admin/dashboard",
+    "/api/v1/recruiter/dashboard",
   ];
   for (const path of paths) {
     const response = await fetch(`${origin}${path}`);

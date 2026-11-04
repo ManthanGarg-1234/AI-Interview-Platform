@@ -11,6 +11,12 @@ const storage = require("./private-storage");
 const { enqueueResumeProcessing } = require("./resume-processing");
 const { enqueueResumeAnalysis, processResumeAnalysis } = require("./resume-analysis");
 const coding = require("./coding");
+const interview = require("./interview");
+const assessment = require("./assessment");
+const performance = require("./performance");
+const notifications = require("./notifications");
+const admin = require("./admin");
+const recruiter = require("./recruiter");
 
 const router = express.Router();
 const upload = multer({
@@ -196,5 +202,12 @@ router.post("/coding/submissions", authenticate, requireRole("STUDENT"), coding.
 router.get("/coding/submissions", authenticate, requireRole("STUDENT"), coding.history);
 router.get("/coding/submissions/:id", authenticate, requireRole("STUDENT"), coding.getSubmission);
 router.get("/coding/stats", authenticate, requireRole("STUDENT"), coding.stats);
+
+router.use("/me/interviews", authenticate, requireRole("STUDENT"), interview);
+router.use("/me/assessments", authenticate, requireRole("STUDENT"), assessment);
+router.use("/me/notifications", authenticate, notifications.router);
+router.use("/me", authenticate, requireRole("STUDENT"), performance);
+router.use("/admin", authenticate, requireRole("ADMIN"), admin);
+router.use("/recruiter", authenticate, requireRole("RECRUITER"), recruiter);
 
 module.exports = router;

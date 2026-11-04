@@ -126,11 +126,20 @@ async function logout(req, res) {
   res.status(204).send();
 }
 
-function authenticate(req, _res, next) {
+async function authenticate(req, _res, next) {
   const token = req.cookies[accessCookie];
   if (!token) return next(Object.assign(new Error("Authentication is required."), { status: 401 }));
-  try { req.auth = jwt.verify(token, accessSecret(), { issuer: "careerprepai" }); next(); }
-  catch { next(Object.assign(new Error("Authentication session is invalid or expired."), { status: 401 })); }
+  try {
+    req.auth = jwt.verify(token, accessSecret(), { issuer: "careerprepai" });
+    if (process.env.DATABASE_URL) {
+      const user = await getPrisma().user.findUnique({ where: { id: req.auth.sub }, select: { status: true } });
+      if (!user || user.status !== "ACTIVE") return next(Object.assign(new Error("Authentication session is no longer active."), { status: 401 }));
+    }
+    next();
+  } catch (error) {
+    if (error.status) return next(error);
+    next(Object.assign(new Error("Authentication session is invalid or expired."), { status: 401 }));
+  }
 }
 function requireRole(...roles) {
   return (req, _res, next) => roles.includes(req.auth?.role) ? next() : next(Object.assign(new Error("You do not have permission to access this resource."), { status: 403 }));
