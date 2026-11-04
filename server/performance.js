@@ -51,6 +51,111 @@ async function performance(userId) {
   };
 }
 
+router.get("/dashboard", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const userId = req.auth.sub;
+    const profileId = await profileFor(userId);
+
+    // Parallel aggregation — all queries scoped to the authenticated student
+    const [
+      profile,
+      codingStats,
+      recentSubmissions,
+      assessmentAttempts,
+      interviewSessions,
+      studyPlans,
+      recentActivities,
+      notifications,
+      upcomingInterviews,
+      upcomingAssessments,
+      learningProgress,
+      contests,
+    ] = await Promise.all([
+      prisma.studentProfile.findUnique({
+        where: { userId },
+        select: { firstName: true, lastName: true, headline: true, readinessScore: true, updatedAt: true, skills: { select: { id: true } }, educations: { select: { id: true } }, projects: { select: { id: true } }, experiences: { select: { id: true } }, certifications: { select: { id: true } }, resumes: { where: { deletedAt: null }, select: { id: true } } },
+      }),
+      prisma.studentProblemProgress.findMany({ where: { userId }, select: { status: true, solvedAt: true, lastSubmittedAt: true } }),
+      prisma.codeSubmission.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 5, select: { id: true, verdict: true, createdAt: true, problem: { select: { title: true, slug: true, difficulty: true } } } }),
+      prisma.assessmentAttempt.findMany({ where: { userId }, orderBy: { startedAt: "desc" }, take: 10, select: { id: true, status: true, score: true, startedAt: true, submittedAt: true, assignment: { select: { assessmentId: true, dueAt: true, assessment: { select: { title: true, type: true } } } }, result: { select: { correctCount: true, incorrectCount: true, unattemptedCount: true } } } }),
+      prisma.interviewSession.findMany({ where: { createdByUserId: userId }, orderBy: { startedAt: "desc" }, take: 5, select: { id: true, type: true, status: true, configuration: true, startedAt: true, completedAt: true, evaluations: { orderBy: { createdAt: "desc" }, take: 1, select: { overallScore: true } } } }),
+      prisma.studyPlan.findMany({ where: { studentProfileId: profileId, status: "ACTIVE" }, orderBy: { updatedAt: "desc" }, take: 1, select: { id: true, targetRole: true, dailyMinutes: true, deadline: true, tasks: { where: { status: { not: "COMPLETED" } }, orderBy: { dueAt: "asc" }, take: 5, select: { id: true, title: true, dueAt: true, priority: true, status: true } } } }),
+      prisma.studentActivity.findMany({ where: { studentProfileId: profileId }, orderBy: { occurredAt: "desc" }, take: 10, select: { id: true, activityType: true, occurredAt: true, durationSeconds: true, metadata: true, topic: { select: { name: true, subject: { select: { name: true } } } } } }),
+      prisma.notification.count({ where: { userId, readAt: null } }),
+      prisma.recruiterInterview.findMany({ where: { participants: { some: { userId } }, status: { in: ["SCHEDULED", "CONFIRMED"] }, scheduledStart: { gte: new Date() } }, orderBy: { scheduledStart: "asc" }, take: 5, select: { id: true, title: true, scheduledStart: true, scheduledEnd: true, timezone: true, status: true } }),
+      prisma.assessmentAssignment.findMany({ where: { studentUserId: userId, status: { in: ["ASSIGNED", "IN_PROGRESS"] }, dueAt: { gte: new Date() } }, orderBy: { dueAt: "asc" }, take: 5, select: { id: true, dueAt: true, assessment: { select: { id: true, title: true, type: true, durationSeconds: true } } } }),
+      prisma.learningProgress.findMany({ where: { studentProfileId: profileId }, include: { topic: { select: { name: true, subject: { select: { id: true, name: true, slug: true } } } } }, orderBy: { lastActivityAt: "desc" }, take: 50 }),
+      prisma.contestRegistration.findMany({ where: { userId, contest: { status: { in: ["PUBLISHED", "LIVE"] } } }, select: { contestId: true, contest: { select: { id: true, title: true, startsAt: true, endsAt: true, status: true } } } }),
+    ]);
+
+    // Compute profile completion
+    const completionChecks = [profile?.firstName, profile?.lastName, profile?.headline, profile?.skills?.length, profile?.educations?.length, profile?.projects?.length, profile?.experiences?.length, profile?.certifications?.length, profile?.resumes?.length];
+    const profileCompletion = Math.round((completionChecks.filter(Boolean).length / completionChecks.length) * 100);
+
+    // Coding stats
+    const solved = codingStats.filter((p) => p.status === "SOLVED").length;
+    const attempted = codingStats.length;
+    const allSubmissions = await prisma.codeSubmission.count({ where: { userId } });
+    const acceptedSubmissions = await prisma.codeSubmission.count({ where: { userId, verdict: "ACCEPTED" } });
+
+    // Streak: consecutive days with at least one accepted submission
+    const streakSubmissions = await prisma.codeSubmission.findMany({ where: { userId, verdict: "ACCEPTED" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+    let streak = 0;
+    if (streakSubmissions.length > 0) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const days = new Set(streakSubmissions.map((s) => { const d = new Date(s.createdAt); d.setHours(0, 0, 0, 0); return d.getTime(); }));
+      let check = today.getTime();
+      while (days.has(check)) { streak++; check -= 86400000; }
+    }
+
+    // Assessment stats
+    const completedAttempts = assessmentAttempts.filter((a) => ["GRADED", "SUBMITTED"].includes(a.status));
+    const scores = completedAttempts.map((a) => Number(a.score || 0)).filter((s) => s > 0);
+    const avgAssessmentScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+
+    // Interview stats
+    const completedInterviews = interviewSessions.filter((s) => s.status === "COMPLETED");
+    const interviewScores = completedInterviews.flatMap((s) => s.evaluations.map((e) => Number(e.overallScore || 0)));
+    const avgInterviewScore = interviewScores.length ? Math.round(interviewScores.reduce((a, b) => a + b, 0) / interviewScores.length) : null;
+
+    // Subject-wise progress from learning progress records
+    const subjectMap = {};
+    for (const lp of learningProgress) {
+      if (!lp.topic?.subject) continue;
+      const { id: subjectId, name: subjectName, slug: subjectSlug } = lp.topic.subject;
+      if (!subjectMap[subjectId]) subjectMap[subjectId] = { id: subjectId, name: subjectName, slug: subjectSlug, completed: 0, inProgress: 0, lastActivityAt: null };
+      if (lp.status === "COMPLETED") subjectMap[subjectId].completed++;
+      else subjectMap[subjectId].inProgress++;
+      if (!subjectMap[subjectId].lastActivityAt || lp.lastActivityAt > subjectMap[subjectId].lastActivityAt) subjectMap[subjectId].lastActivityAt = lp.lastActivityAt;
+    }
+
+    // In-progress assessment (resume workflow)
+    const inProgressAttempt = assessmentAttempts.find((a) => a.status === "IN_PROGRESS");
+
+    // Recent activity timeline — merge multiple sources
+    const timeline = [
+      ...recentSubmissions.map((s) => ({ id: s.id, type: "CODING_SUBMISSION", label: `${s.problem.title} — ${s.verdict}`, link: `/student/coding/${s.problem.slug}`, occurredAt: s.createdAt, meta: { difficulty: s.problem.difficulty, verdict: s.verdict } })),
+      ...completedAttempts.slice(0, 3).map((a) => ({ id: a.id, type: "ASSESSMENT_ATTEMPT", label: `${a.assignment.assessment.title} — ${a.score ?? "unscored"}`, link: `/student/assessments/results/${a.id}`, occurredAt: a.submittedAt || a.startedAt, meta: { score: a.score } })),
+      ...completedInterviews.slice(0, 3).map((s) => ({ id: s.id, type: "AI_INTERVIEW", label: `${s.type.replace("AI_", "")} interview`, link: `/student/interviews/${s.id}`, occurredAt: s.completedAt || s.startedAt, meta: { score: s.evaluations[0]?.overallScore } })),
+      ...recentActivities.map((a) => ({ id: a.id, type: a.activityType, label: a.topic ? `${a.activityType} · ${a.topic.name}` : a.activityType, occurredAt: a.occurredAt, meta: a.metadata })),
+    ].sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt)).slice(0, 12);
+
+    res.json({
+      data: {
+        student: { name: `${profile?.firstName || ""} ${profile?.lastName || ""}`.trim(), headline: profile?.headline || null, profileCompletion, lastActive: recentActivities[0]?.occurredAt || null },
+        overview: { codingSolved: solved, codingAttempted: attempted, codingStreak: streak, totalSubmissions: allSubmissions, acceptedSubmissions, assessmentsCompleted: completedAttempts.length, avgAssessmentScore, interviewsCompleted: completedInterviews.length, avgInterviewScore },
+        subjects: Object.values(subjectMap),
+        studyPlan: studyPlans[0] || null,
+        timeline,
+        upcoming: { interviews: upcomingInterviews, assessments: upcomingAssessments.map((a) => ({ ...a, assessment: a.assessment })), contests: contests.filter((c) => new Date(c.contest.endsAt) > new Date()).map((c) => c.contest) },
+        inProgress: { assessment: inProgressAttempt ? { id: inProgressAttempt.id, title: inProgressAttempt.assignment.assessment.title, expiresAt: inProgressAttempt.assignment.dueAt } : null },
+        unreadNotifications: notifications,
+      },
+    });
+  } catch (error) { next(error); }
+});
+
 router.get("/performance", async (req, res, next) => {
   try { res.json({ data: await performance(req.auth.sub) }); } catch (error) { next(error); }
 });
@@ -117,17 +222,33 @@ async function mentorReply(message, context) {
 
 router.post("/mentor/conversations", async (req, res, next) => {
   try {
-    const input = z.object({ message: z.string().trim().min(1).max(5000) }).parse(req.body);
+    const input = z.object({ message: z.string().trim().min(1).max(5000), conversationId: z.string().uuid().optional() }).parse(req.body);
     const context = await performance(req.auth.sub);
-    const conversation = await getPrisma().aiConversation.create({ data: { userId: req.auth.sub, subject: "Student mentor", topic: "Performance", messages: { create: { role: "USER", content: input.message } } }, include: { messages: true } });
-    const reply = await mentorReply(input.message, { weakestTopic: context.assessments.accuracy != null && context.assessments.accuracy < 60 ? "assessment accuracy" : "consistent practice", performance: { coding: context.coding, interviews: context.interviews, assessments: context.assessments } });
-    const assistant = await getPrisma().aiMessage.create({ data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias } });
-    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, messages: [conversation.messages[0], assistant] } });
+    const prisma = getPrisma();
+    let conversation;
+    if (input.conversationId) {
+      // Append to existing conversation — verify ownership
+      conversation = await prisma.aiConversation.findFirst({ where: { id: input.conversationId, userId: req.auth.sub }, include: { messages: { orderBy: { createdAt: "asc" } } } });
+      if (!conversation) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found." } });
+      await prisma.aiMessage.create({ data: { conversationId: conversation.id, role: "USER", content: input.message } });
+    } else {
+      // New conversation
+      conversation = await prisma.aiConversation.create({ data: { userId: req.auth.sub, subject: "Student mentor", topic: "Performance", messages: { create: { role: "USER", content: input.message } } }, include: { messages: true } });
+    }
+    const reply = await mentorReply(input.message, {
+      weakestTopic: context.assessments.accuracy != null && context.assessments.accuracy < 60 ? "assessment accuracy" : "consistent practice",
+      performance: { coding: context.coding, interviews: context.interviews, assessments: context.assessments },
+      skills: context.skills.slice(0, 10),
+    });
+    const assistant = await prisma.aiMessage.create({ data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias } });
+    // Refresh messages for response
+    const allMessages = await prisma.aiMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: "asc" } });
+    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, messages: allMessages } });
   } catch (error) { next(error); }
 });
 
 router.get("/mentor/conversations", async (req, res, next) => {
-  try { res.json({ data: await getPrisma().aIConversation.findMany({ where: { userId: req.auth.sub }, orderBy: { lastMessageAt: "desc" }, include: { messages: { orderBy: { createdAt: "asc" }, take: 20 } } }) }); } catch (error) { next(error); }
+  try { res.json({ data: await getPrisma().aiConversation.findMany({ where: { userId: req.auth.sub }, orderBy: { lastMessageAt: "desc" }, include: { messages: { orderBy: { createdAt: "asc" }, take: 20 } } }) }); } catch (error) { next(error); }
 });
 
 module.exports = router;

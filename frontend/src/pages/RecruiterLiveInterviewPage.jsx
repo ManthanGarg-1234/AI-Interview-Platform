@@ -12,6 +12,7 @@ export default function RecruiterLiveInterviewPage() {
   const [sharing, setSharing] = useState(false);
   const [error, setError] = useState("");
   const [participants, setParticipants] = useState([]);
+  const iceServers = useRef([]);
   const localVideo = useRef(null);
   const streamRef = useRef(null);
   const socketRef = useRef(null);
@@ -32,11 +33,17 @@ export default function RecruiterLiveInterviewPage() {
       streamRef.current = media;
       if (localVideo.current) localVideo.current.srcObject = media;
       const { data } = await api.post(`/interviews/${id}/room`, { consent: true });
+      iceServers.current = data.data.iceServers || [];
       const socket = io(import.meta.env.VITE_API_SOCKET_URL || window.location.origin, { path: "/socket.io", auth: { token: data.data.token }, withCredentials: true });
       socketRef.current = socket;
       socket.on("connect", () => setStage("live"));
       socket.on("connect_error", (reason) => setError(`Unable to connect to the interview room: ${reason.message}`));
-      socket.on("participant:joined", ({ participantId }) => setParticipants((current) => [...new Set([...current, participantId])]));
+      socket.on("participant:joined", async ({ participantId }) => {
+        setParticipants((current) => [...new Set([...current, participantId])]);
+        const peer = getPeer(participantId);
+        await peer.setLocalDescription(await peer.createOffer());
+        socket.emit("signal:offer", { to: participantId, description: peer.localDescription });
+      });
       socket.on("participant:left", ({ participantId }) => setParticipants((current) => current.filter((item) => item !== participantId)));
       socket.on("room:completed", () => setStage("completed"));
       socket.on("signal:offer", async ({ from, description }) => {
@@ -55,7 +62,7 @@ export default function RecruiterLiveInterviewPage() {
 
   function getPeer(remoteId) {
     if (peers.current.has(remoteId)) return peers.current.get(remoteId);
-    const peer = new RTCPeerConnection({ iceServers: [] });
+    const peer = new RTCPeerConnection({ iceServers: iceServers.current });
     streamRef.current?.getTracks().forEach((track) => peer.addTrack(track, streamRef.current));
     peer.onicecandidate = ({ candidate }) => candidate && socketRef.current?.emit("signal:ice", { to: remoteId, candidate });
     peers.current.set(remoteId, peer);
