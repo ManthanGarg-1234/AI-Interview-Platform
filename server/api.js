@@ -20,6 +20,7 @@ const recruiter = require("./recruiter");
 const recruiterInterviews = require("./recruiter-interviews");
 const jobs = require("./jobs");
 const contests = require("./contests");
+const liveInterviews = require("./live-interviews");
 
 const router = express.Router();
 const upload = multer({
@@ -218,6 +219,8 @@ router.use("/organizer/contests", authenticate, requireRole("ADMIN", "RECRUITER"
 router.use("/recruiter", authenticate, requireRole("RECRUITER"), recruiter);
 router.use("/recruiter/interviews", authenticate, requireRole("RECRUITER"), recruiterInterviews);
 router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), recruiterInterviews);
+router.use("/recruiter-interviews", authenticate, requireRole("STUDENT", "RECRUITER"), liveInterviews);
+router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), liveInterviews);
 router.use("/jobs", authenticate, requireRole("STUDENT"), jobs);
 
 module.exports = router;

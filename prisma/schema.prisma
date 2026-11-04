@@ -185,6 +185,13 @@ enum RecruiterRoundStatus {
   CANCELLED
 }
 
+enum LiveRoomStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  EXPIRED
+}
+
 enum InterviewParticipantRole {
   CANDIDATE
   INTERVIEWER
@@ -358,6 +365,8 @@ model User {
   scorecardsFinalized RecruiterScorecard[] @relation("ScorecardFinalizer")
   scorecardCorrections RecruiterScorecardCorrection[]
   recruiterInterviewAudits RecruiterInterviewAudit[]
+  liveRoomTokens LiveInterviewRoomToken[]
+  liveRoomParticipants LiveInterviewParticipant[]
   @@index([role, status])
   @@index([status, createdAt])
 }
@@ -1363,8 +1372,52 @@ model RecruiterInterview {
   rescheduleRequests InterviewRescheduleRequest[]
   scorecards         RecruiterScorecard[]
   auditEvents        RecruiterInterviewAudit[]
+  liveRoom           LiveInterviewRoom?
   @@index([companyId, status, scheduledStart])
   @@index([applicationId, status])
+}
+
+model LiveInterviewRoom {
+  id              String                    @id @default(uuid()) @db.Uuid
+  interviewId     String                    @unique @db.Uuid
+  status          LiveRoomStatus            @default(WAITING)
+  expiresAt       DateTime
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  interview       RecruiterInterview        @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  participants    LiveInterviewParticipant[]
+  tokens          LiveInterviewRoomToken[]
+  @@index([status, expiresAt])
+}
+
+model LiveInterviewRoomToken {
+  id          String           @id @default(uuid()) @db.Uuid
+  roomId      String           @db.Uuid
+  userId      String           @db.Uuid
+  tokenHash   String           @unique @db.VarChar(128)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  room        LiveInterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@index([roomId, userId, expiresAt])
+}
+
+model LiveInterviewParticipant {
+  id          String           @id @default(uuid()) @db.Uuid
+  roomId      String           @db.Uuid
+  userId      String           @db.Uuid
+  role        InterviewParticipantRole
+  socketId    String?          @db.VarChar(120)
+  joinedAt    DateTime?
+  leftAt      DateTime?
+  createdAt   DateTime         @default(now())
+  room        LiveInterviewRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@unique([roomId, userId])
+  @@index([roomId, leftAt])
 }
 
 model RecruiterInterviewRound {

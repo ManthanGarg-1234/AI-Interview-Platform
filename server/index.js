@@ -6,6 +6,9 @@ const cookieParser = require("cookie-parser");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cors = require("cors");
+const http = require("node:http");
+const { Server } = require("socket.io");
+const { attachSignaling } = require("./webrtc-signaling");
 
 const app = express();
 app.disable("x-powered-by");
@@ -38,5 +41,11 @@ app.use((error, _req, res, _next) => {
   res.status(status).json({ error: { code: error.code || "REQUEST_FAILED", message, ...(error.name === "ZodError" ? { details: error.issues } : {}) } });
 });
 
-if (require.main === module) app.listen(Number(process.env.PORT || 3000), () => console.log(`Coding API listening on ${process.env.PORT || 3000}`));
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: process.env.FRONTEND_ORIGIN || "http://localhost:5173", credentials: true },
+  maxHttpBufferSize: 256 * 1024,
+});
+attachSignaling(io);
+if (require.main === module) httpServer.listen(Number(process.env.PORT || 3000), () => console.log(`Coding API listening on ${process.env.PORT || 3000}`));
 module.exports = app;
