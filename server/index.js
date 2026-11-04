@@ -34,10 +34,18 @@ app.use((req, res, next) => {
 app.use("/api/v1", require("./api"));
 app.get("/favicon.ico", (_req, res) => res.sendStatus(204));
 app.use((error, _req, res, _next) => {
-  const databaseUnavailable = ["DATABASE_NOT_CONFIGURED", "P1001", "P2024"].includes(error.code);
+  const databaseUnavailable = ["DATABASE_NOT_CONFIGURED", "P1000", "P1001", "P1002", "P2024"].includes(error.code);
+  const databaseSchemaUnavailable = ["P2021", "P2022"].includes(error.code);
   const codingUnavailable = ["CODING_QUEUE_UNAVAILABLE", "JUDGE0_UNAVAILABLE", "JUDGE0_CONFIGURATION_INVALID"].includes(error.code);
-  const status = Number.isInteger(error.status) ? error.status : error.code === "LIMIT_FILE_SIZE" ? 413 : databaseUnavailable || codingUnavailable ? 503 : error.name === "ZodError" ? 400 : 500;
-  const message = databaseUnavailable ? "The database service is unavailable. Start PostgreSQL and verify DATABASE_URL before using this feature." : codingUnavailable ? "Coding execution is unavailable. Configure Redis and Judge0 before using this feature." : status >= 500 ? "Unexpected server error." : error.message;
+  const status = Number.isInteger(error.status) ? error.status : error.code === "LIMIT_FILE_SIZE" ? 413 : databaseUnavailable || databaseSchemaUnavailable || codingUnavailable ? 503 : error.name === "ZodError" ? 400 : 500;
+  const message = databaseUnavailable
+    ? "The database service is unavailable. Start PostgreSQL and verify DATABASE_URL before using this feature."
+    : databaseSchemaUnavailable
+      ? "The database schema is missing required tables or columns. Apply reviewed schema migrations before using this feature."
+      : codingUnavailable
+        ? "Coding execution is unavailable. Configure Redis and Judge0 before using this feature."
+        : status >= 500 ? "Unexpected server error." : error.message;
+  if (status >= 500) console.error("API request failed.", { method: _req.method, path: _req.path, code: error.code || "UNCLASSIFIED", name: error.name });
   res.status(status).json({ error: { code: error.code || "REQUEST_FAILED", message, ...(error.name === "ZodError" ? { details: error.issues } : {}) } });
 });
 

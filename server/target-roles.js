@@ -55,6 +55,161 @@ studentRouter.get("/mine", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
+  try {
+    const prisma = getPrisma();
+    const selection = await prisma.studentTargetRole.findFirst({
+      where: { userId: req.auth.sub, role: { slug: req.params.slug, status: "PUBLISHED" } },
+      include: { role: true },
+    });
+    if (!selection) return res.status(404).json({ error: { code: "ROLE_NOT_SELECTED", message: "That target role is not selected." } });
+
+    const profileId = await prisma.studentProfile.findUnique({
+      where: { userId: req.auth.sub },
+      select: { id: true },
+    });
+    if (!profileId) return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Student profile was not found." } });
+
+    const [skills, projects, solvedProblems, attempts] = await Promise.all([
+      prisma.studentSkill.findMany({
+        where: { studentId: profileId.id },
+        include: { skill: { select: { name: true } } },
+      }),
+      prisma.project.findMany({
+        where: { studentId: profileId.id },
+        select: { id: true, name: true, technologies: true },
+      }),
+      prisma.studentProblemProgress.findMany({
+        where: { userId: req.auth.sub, status: "SOLVED" },
+        select: { problem: { select: { title: true, topics: { select: { topic: { select: { name: true } } } } } } },
+      }),
+      prisma.assessmentAttempt.findMany({
+        where: { userId: req.auth.sub, status: { in: ["GRADED", "EXPIRED"] } },
+        orderBy: { submittedAt: "desc" },
+        take: 100,
+        select: {
+          result: { select: { topicBreakdown: true } },
+          assignment: {
+            select: {
+              assessment: {
+                select: {
+                  questions: {
+                    select: {
+                      question: {
+                        select: {
+                          topicId: true,
+                          topic: { select: { name: true, subject: { select: { name: true } } } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const normalize = (value) => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const verifiedSkillNames = new Set(skills
+      .filter((item) => item.evidenceType === "RECRUITER_VERIFIED" || item.verifiedAt)
+      .map((item) => normalize(item.skill.name)));
+    const selfReportedSkillNames = new Set(skills
+      .filter((item) => !item.verifiedAt && item.evidenceType !== "RECRUITER_VERIFIED")
+      .map((item) => normalize(item.skill.name)));
+    const projectTechnologies = new Set(projects.flatMap((project) => Array.isArray(project.technologies) ? project.technologies.map(normalize) : []));
+    const codingTopicNames = new Map();
+    for (const progress of solvedProblems) {
+      for (const { topic } of progress.problem.topics) codingTopicNames.set(normalize(topic.name), topic.name);
+    }
+    const codingTopics = new Set(codingTopicNames.keys());
+    const codingTitles = solvedProblems.map(({ problem }) => problem.title);
+    const subjectAssessmentEvidence = new Map();
+    for (const attempt of attempts) {
+      if (!attempt.result || !attempt.result.topicBreakdown || typeof attempt.result.topicBreakdown !== "object") continue;
+      const topicsById = new Map();
+      for (const link of attempt.assignment.assessment.questions) {
+        const topic = link.question.topic;
+        if (link.question.topicId && topic) topicsById.set(link.question.topicId, topic);
+      }
+      for (const [topicId, result] of Object.entries(attempt.result.topicBreakdown)) {
+        const topic = topicsById.get(topicId);
+        const total = Number(result?.total || 0);
+        const correct = Number(result?.correct || 0);
+        if (!topic || !Number.isFinite(total) || !Number.isFinite(correct) || total <= 0) continue;
+        for (const name of [topic.name, topic.subject?.name].filter(Boolean)) {
+          const key = normalize(name);
+          const current = subjectAssessmentEvidence.get(key) || { correct: 0, total: 0, attempts: 0 };
+          current.correct += correct;
+          current.total += total;
+          current.attempts += 1;
+          subjectAssessmentEvidence.set(key, current);
+        }
+      }
+    }
+
+    const requiredSkills = Array.isArray(selection.role.requiredSkills) ? selection.role.requiredSkills : [];
+    const coreSubjects = Array.isArray(selection.role.coreSubjects) ? selection.role.coreSubjects : [];
+    const skillReport = requiredSkills.map((name) => {
+      const key = normalize(name);
+      const evidence = [];
+      if (verifiedSkillNames.has(key)) evidence.push({ type: "verified-skill", label: `Verified skill profile entry: ${name}` });
+      if (codingTopics.has(key)) evidence.push({ type: "coding", label: `Solved coding problems tagged ${name}`, count: solvedProblems.filter(({ problem }) => problem.topics.some(({ topic }) => normalize(topic.name) === key)).length });
+      if (subjectAssessmentEvidence.has(key)) {
+        const assessment = subjectAssessmentEvidence.get(key);
+        evidence.push({ type: "assessment", label: `Graded assessment evidence: ${name}`, accuracy: Math.round((assessment.correct / assessment.total) * 100), questions: assessment.total });
+      }
+      if (projectTechnologies.has(key)) evidence.push({ type: "project", label: `Project profile lists ${name}; not independently verified` });
+      const selfReported = selfReportedSkillNames.has(key);
+      return {
+        name,
+        status: evidence.some(({ type }) => type !== "project") ? "EVIDENCE_AVAILABLE" : selfReported ? "SELF_REPORTED_ONLY" : evidence.length ? "PROFILE_EVIDENCE_ONLY" : "MISSING_EVIDENCE",
+        evidence,
+      };
+    });
+    const subjectReport = coreSubjects.map((name) => {
+      const result = subjectAssessmentEvidence.get(normalize(name));
+      return {
+        name,
+        status: result ? "MEASURED" : "NO_ASSESSMENT_EVIDENCE",
+        ...(result ? { accuracy: Math.round((result.correct / result.total) * 100), questions: result.total, attempts: result.attempts } : {}),
+      };
+    });
+    const measuredCount = skillReport.filter((item) => item.status === "EVIDENCE_AVAILABLE").length
+      + subjectReport.filter((item) => item.status === "MEASURED").length;
+    const requirementCount = skillReport.length + subjectReport.length;
+
+    res.json({
+      data: {
+        role: { slug: selection.role.slug, name: selection.role.name },
+        generatedAt: new Date().toISOString(),
+        coverage: {
+          measured: measuredCount,
+          total: requirementCount,
+          percent: requirementCount ? Math.round((measuredCount / requirementCount) * 100) : null,
+          definition: "Percentage of required skills and core subjects with linked coding, graded-assessment, or verified-skill evidence. It is not a proficiency or hiring prediction.",
+        },
+        requiredSkills: skillReport,
+        coreSubjects: subjectReport,
+        dsa: {
+          solvedProblems: solvedProblems.length,
+          byTopic: [...codingTopics].map((topic) => ({ topic: codingTopicNames.get(topic), solved: solvedProblems.filter(({ problem }) => problem.topics.some(({ topic: problemTopic }) => normalize(problemTopic.name) === topic)).length })),
+          configuredRequirements: selection.role.dsaRequirements,
+          status: Object.keys(selection.role.dsaRequirements || {}).length ? "REQUIREMENTS_CONFIGURED" : "REQUIREMENTS_NOT_CONFIGURED",
+          problemTitles: codingTitles.slice(0, 20),
+        },
+        projects: { profileEntries: projects.length, status: projects.length ? "PROFILE_EVIDENCE" : "NO_PROJECTS_RECORDED" },
+        evidenceLimits: [
+          "Self-reported skills do not count as measured coverage.",
+          "Project technologies are shown as unverified profile evidence and do not satisfy measured coverage.",
+          "Readiness coverage is not a guarantee of placement or hiring success.",
+        ],
+      },
+    });
+  } catch (error) { next(error); }
+});
+
 studentRouter.post("/mine", async (req, res, next) => {
   try {
     const input = selectionSchema.parse(req.body);

@@ -100,3 +100,69 @@ test("malformed target role preferences are rejected", async () => {
   assert.equal(response.status, 400);
   assert.equal(queried, false);
 });
+
+test("readiness reports evidence without counting self-reported skills or project claims", async () => {
+  const queries = [];
+  prisma = {
+    studentTargetRole: { findFirst: async (args) => { queries.push(["selection", args]); return { role: {
+      slug: "backend", name: "Backend Developer", requiredSkills: ["API design", "Databases", "Docker"],
+      coreSubjects: ["DBMS"], dsaRequirements: {},
+    } }; } },
+    studentProfile: { findUnique: async (args) => { queries.push(["profile", args]); return { id: "profile-1" }; } },
+    studentSkill: { findMany: async (args) => { queries.push(["skills", args]); return [
+      { evidenceType: "SELF_DECLARED", verifiedAt: null, skill: { name: "API design" } },
+      { evidenceType: "RECRUITER_VERIFIED", verifiedAt: new Date(), skill: { name: "Databases" } },
+    ]; } },
+    project: { findMany: async (args) => { queries.push(["projects", args]); return [{ id: "project-1", name: "API", technologies: ["Docker"] }]; } },
+    studentProblemProgress: { findMany: async (args) => { queries.push(["coding", args]); return [
+      { problem: { title: "Graph traversal", topics: [{ topic: { name: "API design" } }] } },
+    ]; } },
+    assessmentAttempt: { findMany: async (args) => { queries.push(["assessments", args]); return [
+      {
+        result: { topicBreakdown: { "topic-1": { correct: 3, total: 4 } } },
+        assignment: { assessment: { questions: [{
+          question: { topicId: "topic-1", topic: { name: "Relational databases", subject: { name: "DBMS" } } },
+        }] } },
+      },
+    ]; } },
+  };
+
+  const response = await fetch(`${origin}/target-roles/mine/backend/readiness`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data.coverage, {
+    measured: 3,
+    total: 4,
+    percent: 75,
+    definition: "Percentage of required skills and core subjects with linked coding, graded-assessment, or verified-skill evidence. It is not a proficiency or hiring prediction.",
+  });
+  assert.equal(body.data.requiredSkills[0].status, "EVIDENCE_AVAILABLE");
+  assert.equal(body.data.requiredSkills[1].status, "EVIDENCE_AVAILABLE");
+  assert.equal(body.data.requiredSkills[2].status, "PROFILE_EVIDENCE_ONLY");
+  assert.equal(body.data.coreSubjects[0].accuracy, 75);
+  assert.deepEqual(body.data.dsa.byTopic, [{ topic: "API design", solved: 1 }]);
+  assert.equal(body.data.dsa.status, "REQUIREMENTS_NOT_CONFIGURED");
+  assert.match(body.data.evidenceLimits[2], /not a guarantee/);
+  assert.deepEqual(queries[0][1].where, { userId: "student-1", role: { slug: "backend", status: "PUBLISHED" } });
+  assert.deepEqual(queries[1][1], { where: { userId: "student-1" }, select: { id: true } });
+  assert.deepEqual(queries.find(([name]) => name === "coding")[1].where, { userId: "student-1", status: "SOLVED" });
+});
+
+test("readiness does not disclose data for a role the student did not select", async () => {
+  let profileQueried = false;
+  prisma = {
+    studentTargetRole: { findFirst: async ({ where }) => {
+      assert.deepEqual(where, { userId: "student-1", role: { slug: "other-role", status: "PUBLISHED" } });
+      return null;
+    } },
+    studentProfile: { findUnique: async () => { profileQueried = true; return { id: "profile-1" }; } },
+  };
+
+  const response = await fetch(`${origin}/target-roles/mine/other-role/readiness`);
+  const body = await response.json();
+
+  assert.equal(response.status, 404);
+  assert.equal(body.error.code, "ROLE_NOT_SELECTED");
+  assert.equal(profileQueried, false);
+});

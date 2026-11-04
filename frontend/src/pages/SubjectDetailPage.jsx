@@ -1,5 +1,5 @@
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, ExternalLink, PlayCircle } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { ArrowLeft, BookOpen, CheckCircle2, ExternalLink, PlayCircle } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getApiError } from "../lib/api";
 
@@ -8,6 +8,7 @@ const KIND_COLORS = { VIDEO: "text-red-500", ARTICLE: "text-blue-500", NOTES: "t
 
 export default function SubjectDetailPage() {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const query = useQuery({
@@ -18,9 +19,21 @@ export default function SubjectDetailPage() {
     },
   });
 
+  async function startTopic(topicSlug) {
+    try {
+      await markProgress.mutateAsync({ topicSlug, status: "IN_PROGRESS" });
+      navigate(`/student/subjects/${slug}/topics/${topicSlug}`);
+    } catch {
+      // The mutation error is rendered below the topic list.
+    }
+  }
+
   const markProgress = useMutation({
     mutationFn: ({ topicSlug, status }) => api.post(`/subjects/${slug}/topics/${topicSlug}/progress`, { status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["subject", slug] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subject", slug] });
+      qc.invalidateQueries({ queryKey: ["learning-progress"] });
+    },
   });
 
   const markResource = useMutation({
@@ -49,6 +62,7 @@ export default function SubjectDetailPage() {
           <h1 className="text-3xl font-bold text-slate-950">{subject.name}</h1>
           <p className="mt-1 text-slate-500">{totalTopics} topics · {completedTopics} completed</p>
         </div>
+        {markProgress.isError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{getApiError(markProgress.error)}</p>}
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-5 py-3 text-center">
           <p className="text-3xl font-black text-indigo-700">
             {totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0}%
@@ -90,16 +104,23 @@ export default function SubjectDetailPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {!isCompleted && (
+                  {!isInProgress && !isCompleted && (
                     <button
-                      onClick={() => markProgress.mutate({ topicSlug: topic.slug, status: isInProgress ? "COMPLETED" : "IN_PROGRESS" })}
+                      onClick={() => startTopic(topic.slug)}
                       disabled={markProgress.isPending}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${isInProgress ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-indigo-700 disabled:opacity-50"
                     >
-                      {isInProgress ? "Mark complete" : "Start"}
+                      {markProgress.isPending ? "Starting…" : "Start"}
                     </button>
                   )}
-                  {isCompleted && <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Completed</span>}
+                  {(isInProgress || isCompleted) && (
+                    <Link
+                      to={`/student/subjects/${slug}/topics/${topic.slug}`}
+                      className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+                    >
+                      {isCompleted ? "Review" : "Continue"}
+                    </Link>
+                  )}
                 </div>
               </div>
 

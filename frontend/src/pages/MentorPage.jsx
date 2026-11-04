@@ -9,6 +9,7 @@ export default function MentorPage() {
   const [message, setMessage] = useState("");
   const [localMessages, setLocalMessages] = useState([]);
   const [responseProvider, setResponseProvider] = useState("");
+  const [contextStatus, setContextStatus] = useState("READY");
   const bottomRef = useRef(null);
 
   // Load conversation history list
@@ -43,6 +44,7 @@ export default function MentorPage() {
       setActiveConversationId(newData.id);
       setLocalMessages(newData.messages);
       setResponseProvider(newData.provider || "");
+      setContextStatus(newData.contextStatus || "READY");
       setMessage("");
       client.invalidateQueries({ queryKey: ["mentor-conversations"] });
     },
@@ -67,6 +69,7 @@ export default function MentorPage() {
     setActiveConversationId(null);
     setLocalMessages([]);
     setResponseProvider("");
+    setContextStatus("READY");
   }
 
   return (
@@ -99,7 +102,11 @@ export default function MentorPage() {
           {conversations.data?.map((conv) => (
             <button
               key={conv.id}
-              onClick={() => setActiveConversationId(conv.id)}
+              onClick={() => {
+                setActiveConversationId(conv.id);
+                setResponseProvider("");
+                setContextStatus("READY");
+              }}
               className={`w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
                 conv.id === activeConversationId
                   ? "bg-indigo-50 font-semibold text-indigo-700"
@@ -128,6 +135,9 @@ export default function MentorPage() {
             </p>
             {responseProvider === "local-fallback" && (
               <p role="status" className="mt-1 text-xs font-semibold text-amber-700">AI service unavailable; showing local guidance.</p>
+            )}
+            {contextStatus === "UNAVAILABLE" && (
+              <p role="status" className="mt-1 text-xs font-semibold text-amber-700">Performance data is unavailable; this conversation uses general guidance.</p>
             )}
           </div>
           <button

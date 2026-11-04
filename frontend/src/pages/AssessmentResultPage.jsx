@@ -45,7 +45,7 @@ export default function AssessmentResultPage() {
       </div>
 
       {/* Score overview */}
-      <div className="mt-6 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-600 to-indigo-700 p-6 text-white">
+      <div className="mt-6 rounded-2xl border border-indigo-100 bg-linear-to-r from-indigo-600 to-indigo-700 p-6 text-white">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-indigo-200 text-sm font-semibold">Final score</p>

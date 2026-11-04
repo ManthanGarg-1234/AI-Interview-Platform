@@ -153,6 +153,7 @@ describe("application routes", () => {
 
     await user.click(await screen.findByRole("button", { name: "Start" }));
     await waitFor(() => expect(post).toHaveBeenCalled());
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/subjects/aptitude/topics/data-interpretation"));
     expect(await screen.findByRole("heading", { name: "Data Interpretation" })).toBeTruthy();
     expect(await screen.findByText(/No resources have been added/)).toBeTruthy();
     await waitFor(() => expect(post).toHaveBeenCalledWith("/subjects/aptitude/topics/data-interpretation/progress", { status: "IN_PROGRESS" }));

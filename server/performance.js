@@ -296,7 +296,20 @@ async function mentorReply(message, context) {
 router.post("/mentor/conversations", async (req, res, next) => {
   try {
     const input = z.object({ message: z.string().trim().min(1).max(5000), conversationId: z.string().uuid().optional() }).parse(req.body);
-    const context = await performance(req.auth.sub);
+    let context;
+    let contextStatus = "READY";
+    try {
+      context = await performance(req.auth.sub);
+    } catch (error) {
+      console.warn("AI mentor could not load performance context; using general guidance.", { name: error.name, code: error.code });
+      contextStatus = "UNAVAILABLE";
+      context = {
+        assessments: { accuracy: null },
+        coding: { attempted: 0, solved: 0, acceptanceRate: null },
+        interviews: { completed: 0, averageScore: null },
+        skills: [],
+      };
+    }
     const prisma = getPrisma();
     let conversation;
     if (input.conversationId) {
@@ -327,7 +340,7 @@ router.post("/mentor/conversations", async (req, res, next) => {
     const assistant = await prisma.aiMessage.create({ data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias } });
     // Refresh messages for response
     const allMessages = await prisma.aiMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: "asc" } });
-    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, messages: allMessages } });
+    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, contextStatus, messages: allMessages } });
   } catch (error) { next(error); }
 });
 
