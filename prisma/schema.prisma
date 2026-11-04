@@ -111,6 +111,15 @@ enum SubmissionType {
   RUN
   PRACTICE
   CONTEST
+}
+
+enum ContestStatus {
+  DRAFT
+  PUBLISHED
+  LIVE
+  ENDED
+  ARCHIVED
+  CONTEST
   RECRUITER_ASSESSMENT
 }
 
@@ -269,8 +278,12 @@ model User {
   aiUsage            AIUsageRecord[]
   aiEvaluations      AIEvaluation[]
   bookmarks          Bookmark[]
+  jobBookmarks       JobBookmark[]
   codingProgress     StudentProblemProgress[]
   codeRuns           CodeRun[]
+  organizedContests  Contest[] @relation("ContestOrganizer")
+  contestRegistrations ContestRegistration[]
+  contestSubmissions ContestSubmission[]
   auditLogs          AuditLog[]       @relation("AuditActor")
   securityEvents     SecurityEvent[]  @relation("SecuritySubject")
   reportedCases      ModerationCase[] @relation("ModerationReporter")
@@ -531,11 +544,23 @@ model Job {
   createdBy         User            @relation("JobCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   skills            JobSkill[]
   applications      Application[]
+  bookmarks         JobBookmark[]
   assessments       AssessmentAssignment[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   @@index([companyId, status, deadline])
   @@index([status, publishedAt])
+}
+
+model JobBookmark {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  jobId     String   @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  @@unique([userId, jobId])
+  @@index([userId, createdAt])
 }
 
 model JobSkill {
@@ -735,6 +760,8 @@ model CodingProblem {
   codeRuns          CodeRun[]
   progress          StudentProblemProgress[]
   bookmarks         Bookmark[]
+  contestProblems    ContestProblem[]
+  contestSubmissions ContestSubmission[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   @@index([status, difficulty])
@@ -777,6 +804,7 @@ model CodeSubmission {
   userId            String          @db.Uuid
   problemId         String          @db.Uuid
   assignmentId      String?         @db.Uuid
+  contestId         String?         @db.Uuid
   type              SubmissionType
   language          String          @db.VarChar(40)
   sourceCode        String
@@ -793,7 +821,9 @@ model CodeSubmission {
   user              User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   problem           CodingProblem   @relation(fields: [problemId], references: [id], onDelete: Restrict)
   assignment        AssessmentAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  contest           Contest?         @relation(fields: [contestId], references: [id], onDelete: SetNull)
   executionResults  ExecutionResult[]
+  contestSubmission ContestSubmission?
   statusHistory     SubmissionStatusHistory[]
   codeRuns          CodeRun[]
   @@unique([userId, idempotencyKey])
@@ -825,6 +855,73 @@ model CodeRun {
   submission        CodeSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
   @@index([userId, createdAt])
   @@index([status, createdAt])
+}
+
+model Contest {
+  id                    String               @id @default(uuid()) @db.Uuid
+  organizerUserId       String               @db.Uuid
+  title                 String               @db.VarChar(240)
+  slug                  String               @unique @db.VarChar(180)
+  description           String?
+  status                ContestStatus        @default(DRAFT)
+  startsAt              DateTime
+  endsAt                DateTime
+  maxSubmissionsPerProblem Int               @default(3)
+  allowedLanguages      Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  organizer             User                 @relation("ContestOrganizer", fields: [organizerUserId], references: [id], onDelete: Restrict)
+  problems              ContestProblem[]
+  registrations         ContestRegistration[]
+  submissions           ContestSubmission[]
+  codeSubmissions       CodeSubmission[]
+  @@index([status, startsAt, endsAt])
+  @@index([organizerUserId, createdAt])
+}
+
+model ContestProblem {
+  id          String        @id @default(uuid()) @db.Uuid
+  contestId   String        @db.Uuid
+  problemId   String        @db.Uuid
+  points      Int           @default(100)
+  penaltyPerWrong Int       @default(0)
+  sequence    Int           @default(1)
+  contest     Contest       @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  problem     CodingProblem @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  @@unique([contestId, problemId])
+  @@unique([contestId, sequence])
+}
+
+model ContestRegistration {
+  id          String   @id @default(uuid()) @db.Uuid
+  contestId   String   @db.Uuid
+  userId      String   @db.Uuid
+  registeredAt DateTime @default(now())
+  contest     Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([contestId, userId])
+  @@index([userId, registeredAt])
+}
+
+model ContestSubmission {
+  id             String        @id @default(uuid()) @db.Uuid
+  contestId      String        @db.Uuid
+  userId         String        @db.Uuid
+  problemId      String        @db.Uuid
+  codeSubmissionId String      @unique @db.Uuid
+  language       String        @db.VarChar(40)
+  sourceHash     String        @db.VarChar(64)
+  score          Int           @default(0)
+  wrongAttempts  Int           @default(0)
+  solved         Boolean       @default(false)
+  submittedAt    DateTime      @default(now())
+  contest        Contest       @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem        CodingProblem @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  codeSubmission CodeSubmission @relation(fields: [codeSubmissionId], references: [id], onDelete: Cascade)
+  @@index([contestId, userId, submittedAt])
+  @@unique([contestId, userId, problemId, submittedAt])
+  @@unique([contestId, userId, problemId, sourceHash])
 }
 
 model SubmissionStatusHistory {

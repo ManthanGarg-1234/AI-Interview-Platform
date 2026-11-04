@@ -2,6 +2,7 @@
 
 const { Worker } = require("bullmq");
 const { getPrisma } = require("./prisma");
+const { scoreFor } = require("./contests");
 const storage = require("./private-storage");
 const { redisConnection } = require("./coding-queue");
 const { submitAndPoll, configuration: judge0Configuration } = require("./judge0");
@@ -59,7 +60,7 @@ async function readTestCase(testCase) {
 async function executeSubmission(prisma, submissionId) {
   const submission = await prisma.codeSubmission.findUnique({
     where: { id: submissionId },
-    include: { problem: { include: { testCases: { where: { enabled: true }, orderBy: { sequence: "asc" } } } } },
+    include: { problem: { include: { testCases: { where: { enabled: true }, orderBy: { sequence: "asc" } } } }, contestSubmission: { include: { contest: true, problem: true } } },
   });
   if (!submission || terminalStatuses.has(submission.status)) return;
   await prisma.codeSubmission.update({ where: { id: submission.id }, data: { status: "RUNNING", startedAt: new Date(), attemptCount: { increment: 1 } } });
@@ -104,7 +105,14 @@ async function executeSubmission(prisma, submissionId) {
       await tx.executionResult.create({ data: { submissionId: submission.id, provider: "judge0", providerRequestId: null, passedTests, totalTests: submission.problem.testCases.length, executionTimeMs: totalTime, memoryKb: maxMemory || null, stdout: publicFeedback.stdout, stderr: publicFeedback.stderr, compileOutput: publicFeedback.compileOutput, failureCode: accepted ? null : finalVerdict, perTestSummary: { tests: summaries, publicFeedback } } });
       await tx.codeSubmission.update({ where: { id: submission.id }, data: { status, verdict: finalVerdict, completedAt: new Date() } });
       await tx.submissionStatusHistory.create({ data: { submissionId: submission.id, fromStatus: "RUNNING", toStatus: status, note: transitionNote(finalVerdict) } });
-      if (accepted) await tx.studentProblemProgress.update({ where: { userId_problemId: { userId: submission.userId, problemId: submission.problemId } }, data: { status: "SOLVED", solvedAt: new Date() } });
+      if (submission.type === "CONTEST" && submission.contestSubmission) {
+        const contest = submission.contestSubmission;
+        const wrongCount = await tx.contestSubmission.count({ where: { contestId: contest.contestId, userId: submission.userId, problemId: submission.problemId, solved: false } });
+        const priorWrong = accepted ? Math.max(0, wrongCount - 1) : wrongCount;
+        await tx.contestSubmission.update({ where: { id: contest.id }, data: { solved: accepted, wrongAttempts: priorWrong, score: accepted ? scoreFor({ points: contest.problem.points, penaltyPerWrong: contest.problem.penaltyPerWrong }, priorWrong) : 0 } });
+      } else if (accepted) {
+        await tx.studentProblemProgress.update({ where: { userId_problemId: { userId: submission.userId, problemId: submission.problemId } }, data: { status: "SOLVED", solvedAt: new Date() } });
+      }
     });
   } catch (error) {
     if (error.retryable) {

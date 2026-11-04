@@ -17,6 +17,8 @@ const performance = require("./performance");
 const notifications = require("./notifications");
 const admin = require("./admin");
 const recruiter = require("./recruiter");
+const jobs = require("./jobs");
+const contests = require("./contests");
 
 const router = express.Router();
 const upload = multer({
@@ -203,11 +205,16 @@ router.get("/coding/submissions", authenticate, requireRole("STUDENT"), coding.h
 router.get("/coding/submissions/:id", authenticate, requireRole("STUDENT"), coding.getSubmission);
 router.get("/coding/stats", authenticate, requireRole("STUDENT"), coding.stats);
 
+router.use("/contests", authenticate, requireRole("STUDENT"), contests.router);
+
 router.use("/me/interviews", authenticate, requireRole("STUDENT"), interview);
 router.use("/me/assessments", authenticate, requireRole("STUDENT"), assessment);
 router.use("/me/notifications", authenticate, notifications.router);
 router.use("/me", authenticate, requireRole("STUDENT"), performance);
 router.use("/admin", authenticate, requireRole("ADMIN"), admin);
+router.use("/admin/contests", authenticate, requireRole("ADMIN"), contests.adminRouter);
+router.use("/organizer/contests", authenticate, requireRole("ADMIN", "RECRUITER"), contests.adminRouter);
 router.use("/recruiter", authenticate, requireRole("RECRUITER"), recruiter);
+router.use("/jobs", authenticate, requireRole("STUDENT"), jobs);
 
 module.exports = router;

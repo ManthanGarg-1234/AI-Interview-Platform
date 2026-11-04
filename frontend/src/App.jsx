@@ -25,6 +25,11 @@ import NotificationsPage from "./pages/NotificationsPage";
 import NotificationPreferencesPage from "./pages/NotificationPreferencesPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import RecruiterDashboardPage from "./pages/RecruiterDashboardPage";
+import JobsPage from "./pages/JobsPage";
+import RecruiterJobsPage from "./pages/RecruiterJobsPage";
+import JobDetailPage from "./pages/JobDetailPage";
+import ContestsPage from "./pages/ContestsPage";
+import ContestWorkspacePage from "./pages/ContestWorkspacePage";
 
 function useCurrentUser() {
   const location = useLocation();
@@ -78,9 +83,13 @@ function AppRoutes() {
       <Route path="/register" element={user ? <Navigate to="/app" replace /> : <RegisterPage />} />
       <Route path="/app" element={<ProtectedRoute><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/profile" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><StudentProfilePage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/jobs" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><JobsPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/jobs/:id" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><JobDetailPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/resume-analysis" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><ResumeAnalysisPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/coding" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><CodingPracticePage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/coding/:slug" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><CodingProblemPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/contests" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><ContestsPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/contests/:id" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><ContestWorkspacePage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewDashboardPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews/new" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewSetupPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews/history" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewHistoryPage /></PortalLayout></ProtectedRoute>} />
@@ -98,6 +107,7 @@ function AppRoutes() {
       <Route path="/student/assessments/results/:id" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><AssessmentResultPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/*" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/*" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterDashboardPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/recruiter/jobs" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterJobsPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/admin/*" element={<ProtectedRoute roles={["ADMIN"]}><PortalLayout user={user}><AdminDashboardPage /></PortalLayout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? "/app" : "/login"} replace />} />
     </Routes>
