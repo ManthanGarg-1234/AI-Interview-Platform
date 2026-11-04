@@ -70,8 +70,8 @@ async function ensureActive(attempt) {
 
 router.get("/", async (req, res, next) => {
   try {
-    const assessments = await getPrisma().assessment.findMany({ where: { status: "PUBLISHED" }, orderBy: { publishedAt: "desc" }, include: { questions: { select: { questionId: true, points: true } } } });
-    res.json({ data: assessments.map((assessment) => ({ id: assessment.id, title: assessment.title, type: assessment.type, durationSeconds: assessment.durationSeconds, maxAttempts: assessment.maxAttempts, questionCount: assessment.questions.length, totalMarks: assessment.questions.reduce((sum, item) => sum + Number(item.points), 0) })) });
+    const assessments = await getPrisma().assessment.findMany({ where: { status: "PUBLISHED", OR: [{ ownerCompanyId: null }, { assignments: { some: { studentUserId: req.auth.sub } } }] }, orderBy: { publishedAt: "desc" }, include: { questions: { select: { questionId: true, points: true } }, codingProblems: { select: { problemId: true } } } });
+    res.json({ data: assessments.map((assessment) => ({ id: assessment.id, title: assessment.title, type: assessment.type, durationSeconds: assessment.durationSeconds, maxAttempts: assessment.maxAttempts, questionCount: assessment.questions.length, codingProblemCount: assessment.codingProblems.length, totalMarks: assessment.questions.reduce((sum, item) => sum + Number(item.points), 0) })) });
   } catch (error) { next(error); }
 });
 
@@ -159,7 +159,7 @@ router.post("/attempts/:id/submit", async (req, res, next) => {
       const savedResult = await tx.assessmentResult.upsert({ where: { attemptId: attempt.id }, update: { correctCount, incorrectCount, unattemptedCount, topicBreakdown, gradedAt: new Date() }, create: { attemptId: attempt.id, correctCount, incorrectCount, unattemptedCount, topicBreakdown } });
       await Promise.all(scored.filter((item) => item.submitted).map((item) => tx.assessmentAnswer.update({ where: { id: item.submitted.id }, data: { isCorrect: item.correct, points: item.points } })));
       await tx.assessmentAttempt.update({ where: { id: attempt.id }, data: { status: expired ? "EXPIRED" : "GRADED", submittedAt: new Date(), score } });
-      await tx.assessmentAssignment.update({ where: { id: attempt.assignmentId }, data: { status: expired ? "EXPIRED" : "SUBMITTED" } });
+      await tx.assessmentAssignment.update({ where: { id: attempt.assignmentId }, data: { status: expired ? "EXPIRED" : "SUBMITTED", completedAt: new Date() } });
       return savedResult;
     });
     res.status(200).json({ data: { id: attempt.id, status: expired ? "EXPIRED" : "GRADED", score, result } });

@@ -168,6 +168,43 @@ enum InterviewStatus {
   EXPIRED
 }
 
+enum RecruiterInterviewStatus {
+  DRAFT
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RecruiterRoundStatus {
+  PLANNED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InterviewParticipantRole {
+  CANDIDATE
+  INTERVIEWER
+  OBSERVER
+}
+
+enum RescheduleRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  CANCELLED
+}
+
+enum ScorecardStatus {
+  DRAFT
+  SUBMITTED
+  FINALIZED
+  CORRECTED
+}
+
 enum ConsentType {
   PROFILE_DISCOVERY
   RESUME_SHARING
@@ -293,6 +330,7 @@ model User {
   authoredNotes      RecruiterNote[]
   verifiedSkills     StudentSkill[]  @relation("SkillVerifier")
   assignedAssessments AssessmentAssignment[] @relation("AssignmentAssigner")
+  assessmentReviews AssessmentReview[] @relation("AssessmentReviewer")
   completedTasks     StudyTaskCompletion[]
   createdFiles       StoredFile[]     @relation("FileOwner")
   dataAccesses       DataAccessLog[] @relation("DataAccessActor")
@@ -311,6 +349,15 @@ model User {
   changedStageHistory ApplicationStageHistory[] @relation("StageChangedBy")
   updatedAIConfigurations AIModelConfiguration[] @relation("AIConfigUpdater")
   decidedAppeals Appeal[] @relation("AppealDecider")
+  recruiterInterviewsCreated RecruiterInterview[] @relation("RecruiterInterviewCreator")
+  recruiterInterviewParticipants RecruiterInterviewParticipant[]
+  interviewAvailabilities InterviewAvailability[]
+  rescheduleRequestsCreated InterviewRescheduleRequest[] @relation("RescheduleRequester")
+  rescheduleRequestsReviewed InterviewRescheduleRequest[] @relation("RescheduleReviewer")
+  scorecardsSubmitted RecruiterScorecard[] @relation("ScorecardSubmitter")
+  scorecardsFinalized RecruiterScorecard[] @relation("ScorecardFinalizer")
+  scorecardCorrections RecruiterScorecardCorrection[]
+  recruiterInterviewAudits RecruiterInterviewAudit[]
   @@index([role, status])
   @@index([status, createdAt])
 }
@@ -485,6 +532,7 @@ model Company {
   jobs              Job[]
   verifications     CompanyVerification[]
   assessments       Assessment[]   @relation("CompanyAssessmentOwner")
+  recruiterInterviews RecruiterInterview[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   @@index([status, name])
@@ -592,6 +640,7 @@ model Application {
   notes             RecruiterNote[]
   assessmentAssignments AssessmentAssignment[]
   interviewSessions InterviewSession[]
+  recruiterInterviews RecruiterInterview[]
   @@unique([jobId, studentUserId, reapplicationNumber])
   @@index([studentUserId, status, updatedAt])
   @@index([jobId, status, updatedAt])
@@ -762,6 +811,7 @@ model CodingProblem {
   bookmarks         Bookmark[]
   contestProblems    ContestProblem[]
   contestSubmissions ContestSubmission[]
+  assessmentLinks AssessmentCodingProblem[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   @@index([status, difficulty])
@@ -994,7 +1044,9 @@ model Assessment {
   ownerCompany      Company?            @relation("CompanyAssessmentOwner", fields: [ownerCompanyId], references: [id], onDelete: Restrict)
   createdBy          User                @relation("AssessmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
   questions         AssessmentQuestion[]
-  assignments       AssessmentAssignment[]
+  codingProblems    AssessmentCodingProblem[]
+  assignments        AssessmentAssignment[]
+  reviews           AssessmentReview[]
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   @@index([ownerCompanyId, status])
@@ -1032,6 +1084,17 @@ model AssessmentQuestion {
   @@unique([assessmentId, sequence])
 }
 
+model AssessmentCodingProblem {
+  assessmentId String        @db.Uuid
+  problemId    String        @db.Uuid
+  sequence     Int
+  points       Decimal       @db.Decimal(8, 2)
+  assessment   Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  problem      CodingProblem @relation(fields: [problemId], references: [id], onDelete: Restrict)
+  @@id([assessmentId, problemId])
+  @@unique([assessmentId, sequence])
+}
+
 model QuestionOption {
   id                String              @id @default(uuid()) @db.Uuid
   questionId        String              @db.Uuid
@@ -1052,6 +1115,8 @@ model AssessmentAssignment {
   startsAt          DateTime?
   dueAt             DateTime?
   status            AssignmentStatus    @default(ASSIGNED)
+  invitedAt         DateTime             @default(now())
+  completedAt       DateTime?
   assessment        Assessment          @relation(fields: [assessmentId], references: [id], onDelete: Restrict)
   student           User                @relation("AssessmentStudent", fields: [studentUserId], references: [id], onDelete: Restrict)
   assignedBy        User                @relation("AssignmentAssigner", fields: [assignedByUserId], references: [id], onDelete: Restrict)
@@ -1063,6 +1128,22 @@ model AssessmentAssignment {
   updatedAt         DateTime            @updatedAt
   @@index([studentUserId, status])
   @@index([applicationId])
+}
+
+model AssessmentReview {
+  id          String            @id @default(uuid()) @db.Uuid
+  assessmentId String           @db.Uuid
+  attemptId   String            @db.Uuid
+  reviewerId  String            @db.Uuid
+  rating      Int?
+  note        String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  assessment  Assessment        @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  attempt     AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  reviewer    User              @relation("AssessmentReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  @@unique([assessmentId, attemptId])
+  @@index([assessmentId, createdAt])
 }
 
 model AssessmentAttempt {
@@ -1079,6 +1160,7 @@ model AssessmentAttempt {
   user              User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   answers           AssessmentAnswer[]
   result            AssessmentResult?
+  reviews           AssessmentReview[]
   @@unique([assignmentId, attemptNumber])
   @@index([userId, status])
 }
@@ -1257,6 +1339,140 @@ model StudyRecommendation {
   approvedAt        DateTime?
   plan              StudyPlan           @relation(fields: [studyPlanId], references: [id], onDelete: Cascade)
   @@index([studyPlanId, status])
+}
+
+model RecruiterInterview {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  companyId          String                   @db.Uuid
+  applicationId      String                   @db.Uuid
+  createdByUserId    String                   @db.Uuid
+  title              String                   @db.VarChar(240)
+  status             RecruiterInterviewStatus @default(DRAFT)
+  timezone           String                   @db.VarChar(80)
+  scheduledStart     DateTime?
+  scheduledEnd       DateTime?
+  meetingUrl         String?                  @db.VarChar(1000)
+  cancellationReason String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  company            Company                  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  application        Application              @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  createdBy          User                     @relation("RecruiterInterviewCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  rounds             RecruiterInterviewRound[]
+  participants       RecruiterInterviewParticipant[]
+  rescheduleRequests InterviewRescheduleRequest[]
+  scorecards         RecruiterScorecard[]
+  auditEvents        RecruiterInterviewAudit[]
+  @@index([companyId, status, scheduledStart])
+  @@index([applicationId, status])
+}
+
+model RecruiterInterviewRound {
+  id          String                   @id @default(uuid()) @db.Uuid
+  interviewId String                   @db.Uuid
+  sequence    Int
+  name        String                   @db.VarChar(160)
+  status      RecruiterRoundStatus     @default(PLANNED)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  interview   RecruiterInterview        @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  participants RecruiterInterviewParticipant[]
+  scorecards  RecruiterScorecard[]
+  @@unique([interviewId, sequence])
+  @@index([interviewId, status])
+}
+
+model RecruiterInterviewParticipant {
+  id          String                   @id @default(uuid()) @db.Uuid
+  interviewId String                   @db.Uuid
+  roundId     String?                  @db.Uuid
+  userId      String                   @db.Uuid
+  role        InterviewParticipantRole
+  confirmedAt DateTime?
+  createdAt   DateTime                 @default(now())
+  interview   RecruiterInterview        @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  round       RecruiterInterviewRound?  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  user        User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@unique([interviewId, userId])
+  @@index([userId, role])
+}
+
+model InterviewAvailability {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  timezone  String   @db.VarChar(80)
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, startsAt, endsAt])
+}
+
+model InterviewRescheduleRequest {
+  id             String                  @id @default(uuid()) @db.Uuid
+  interviewId    String                  @db.Uuid
+  requestedById  String                  @db.Uuid
+  proposedStart  DateTime
+  proposedEnd    DateTime
+  timezone       String                  @db.VarChar(80)
+  reason         String?
+  status         RescheduleRequestStatus @default(PENDING)
+  reviewedById   String?                 @db.Uuid
+  reviewedAt     DateTime?
+  createdAt      DateTime                @default(now())
+  interview      RecruiterInterview      @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  requestedBy    User                    @relation("RescheduleRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  reviewedBy     User?                   @relation("RescheduleReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  @@index([interviewId, status, createdAt])
+}
+
+model RecruiterScorecard {
+  id            String          @id @default(uuid()) @db.Uuid
+  interviewId   String          @db.Uuid
+  roundId       String?         @db.Uuid
+  evaluatorId   String          @db.Uuid
+  status        ScorecardStatus @default(DRAFT)
+  ratings       Json
+  overallScore  Decimal?        @db.Decimal(5, 2)
+  recommendation String?
+  comments      String?
+  submittedAt   DateTime?
+  finalizedAt   DateTime?
+  finalizedById String?         @db.Uuid
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  interview     RecruiterInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  round         RecruiterInterviewRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  evaluator     User            @relation("ScorecardSubmitter", fields: [evaluatorId], references: [id], onDelete: Restrict)
+  finalizedBy   User?           @relation("ScorecardFinalizer", fields: [finalizedById], references: [id], onDelete: SetNull)
+  corrections   RecruiterScorecardCorrection[]
+  @@unique([interviewId, roundId, evaluatorId])
+  @@index([interviewId, status])
+}
+
+model RecruiterScorecardCorrection {
+  id          String             @id @default(uuid()) @db.Uuid
+  scorecardId String             @db.Uuid
+  correctedById String           @db.Uuid
+  previous    Json
+  corrected   Json
+  reason      String
+  createdAt   DateTime           @default(now())
+  scorecard   RecruiterScorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+  correctedBy User               @relation(fields: [correctedById], references: [id], onDelete: Restrict)
+  @@index([scorecardId, createdAt])
+}
+
+model RecruiterInterviewAudit {
+  id          String            @id @default(uuid()) @db.Uuid
+  interviewId String            @db.Uuid
+  actorId     String            @db.Uuid
+  action      String            @db.VarChar(80)
+  details     Json?
+  createdAt   DateTime          @default(now())
+  interview   RecruiterInterview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  actor       User              @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  @@index([interviewId, createdAt])
 }
 
 model InterviewSession {

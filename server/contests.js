@@ -114,7 +114,7 @@ router.get("/:id/standings", async (req, res, next) => {
       if (!registration && req.auth.role !== "ADMIN") fail("Standings are protected until you register or the contest ends.", "STANDINGS_PRIVATE", 403);
     }
     const rows = await prisma.contestSubmission.groupBy({ by: ["userId"], where: { contestId: contest.id, solved: true }, _sum: { score: true }, _count: { problemId: true } });
-    res.json({ data: rows.sort((a, b) => (b._sum.score || 0) - (a._sum.score || 0)).map((row, index) => ({ rank: index + 1, userId: row.userId, score: row._sum.score || 0, solved: row._count.problemId })) });
+    res.json({ data: rows.sort((a, b) => (b._sum.score || 0) - (a._sum.score || 0)).map((row, index) => ({ rank: index + 1, score: row._sum.score || 0, solved: row._count.problemId, isCurrentUser: row.userId === req.auth.sub })) });
   } catch (error) { next(error); }
 });
 

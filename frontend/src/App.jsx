@@ -27,6 +27,8 @@ import AdminDashboardPage from "./pages/AdminDashboardPage";
 import RecruiterDashboardPage from "./pages/RecruiterDashboardPage";
 import JobsPage from "./pages/JobsPage";
 import RecruiterJobsPage from "./pages/RecruiterJobsPage";
+import RecruiterAssessmentsPage from "./pages/RecruiterAssessmentsPage";
+import RecruiterAssessmentReviewsPage from "./pages/RecruiterAssessmentReviewsPage";
 import JobDetailPage from "./pages/JobDetailPage";
 import ContestsPage from "./pages/ContestsPage";
 import ContestWorkspacePage from "./pages/ContestWorkspacePage";
@@ -108,6 +110,8 @@ function AppRoutes() {
       <Route path="/student/*" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/*" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterDashboardPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/jobs" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterJobsPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/recruiter/assessments" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterAssessmentsPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/recruiter/assessments/:id/reviews" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterAssessmentReviewsPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/admin/*" element={<ProtectedRoute roles={["ADMIN"]}><PortalLayout user={user}><AdminDashboardPage /></PortalLayout></ProtectedRoute>} />
       <Route path="*" element={<Navigate to={user ? "/app" : "/login"} replace />} />
     </Routes>
