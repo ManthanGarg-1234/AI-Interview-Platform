@@ -47,7 +47,14 @@ test("all student profile and resume surfaces reject unauthenticated access", as
     "/api/v1/me/assessments/attempts",
     "/api/v1/me/notifications",
     "/api/v1/me/notifications/preferences",
+    "/api/v1/subjects/me/progress",
+    "/api/v1/target-roles/",
+    "/api/v1/target-roles/mine",
     "/api/v1/admin/dashboard",
+    "/api/v1/admin/learning/subjects",
+    "/api/v1/admin/target-roles/",
+    "/api/v1/dsa-sheets/",
+    "/api/v1/admin/dsa-sheets/import/preview",
     "/api/v1/recruiter/dashboard",
   ];
   for (const path of paths) {

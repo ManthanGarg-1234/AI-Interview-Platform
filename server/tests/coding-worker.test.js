@@ -15,7 +15,7 @@ function fakePrisma(expected, testCases = [
   { sequence: 1, kind: "PUBLIC", enabled: true, inputRef: storedKeys[0], expectedOutputRef: expected },
   { sequence: 2, kind: "HIDDEN", enabled: true, inputRef: storedKeys[1], expectedOutputRef: expected },
 ]) {
-  const calls = { statuses: [], result: null, progress: false };
+  const calls = { statuses: [], result: null, progress: false, sheetProgress: [] };
   const submission = {
     id: crypto.randomUUID(),
     userId: crypto.randomUUID(),
@@ -29,11 +29,14 @@ function fakePrisma(expected, testCases = [
       testCases: testCases.filter((testCase) => testCase.enabled),
     },
   };
+  calls.userId = submission.userId;
   const tx = {
     executionResult: { create: async ({ data }) => { calls.result = data; } },
     codeSubmission: { update: async () => {}, findUnique: async () => ({ status: "RUNNING" }) },
     submissionStatusHistory: { create: async ({ data }) => calls.statuses.push(data) },
     studentProblemProgress: { update: async () => { calls.progress = true; } },
+    dSASheetProblem: { findMany: async () => [{ id: "sheet-entry-1", sheetId: "sheet-1" }] },
+    dSASheetProgress: { upsert: async ({ where, create }) => calls.sheetProgress.push({ where, create }) },
   };
   return {
     calls,
@@ -81,6 +84,18 @@ test("worker accepts all tests and stores no hidden inputs or expected output", 
   assert.equal(prisma.calls.result.totalTests, 2);
   assert.equal(prisma.calls.result.perTestSummary.tests.length, 2);
   assert.ok(prisma.calls.progress);
+  assert.equal(prisma.calls.sheetProgress.length, 1);
+  assert.deepEqual(prisma.calls.sheetProgress[0].where, {
+    sheetProblemId_userId: { sheetProblemId: "sheet-entry-1", userId: prisma.calls.userId },
+  });
+  assert.deepEqual({ ...prisma.calls.sheetProgress[0].create, solvedAt: undefined }, {
+    sheetId: "sheet-1",
+    sheetProblemId: "sheet-entry-1",
+    userId: prisma.calls.userId,
+    status: "SOLVED",
+    solvedAt: undefined,
+  });
+  assert.ok(prisma.calls.sheetProgress[0].create.solvedAt instanceof Date);
   assert.doesNotMatch(JSON.stringify(prisma.calls.result.perTestSummary), /worker-/);
 });
 
@@ -91,6 +106,7 @@ test("zero enabled tests fail safely without solving progress", async () => {
   assert.equal(prisma.calls.result.totalTests, 0);
   assert.equal(prisma.calls.result.failureCode, "NO_ENABLED_TEST_CASES");
   assert.equal(prisma.calls.progress, false);
+  assert.equal(prisma.calls.sheetProgress.length, 0);
 });
 
 test("all disabled tests fail safely without solving progress", async () => {
@@ -100,6 +116,7 @@ test("all disabled tests fail safely without solving progress", async () => {
   assert.equal(prisma.calls.result.totalTests, 0);
   assert.equal(prisma.calls.result.failureCode, "NO_ENABLED_TEST_CASES");
   assert.equal(prisma.calls.progress, false);
+  assert.equal(prisma.calls.sheetProgress.length, 0);
 });
 
 test("missing test-case storage fails safely with no executed tests", async () => {
@@ -111,6 +128,7 @@ test("missing test-case storage fails safely with no executed tests", async () =
   assert.equal(prisma.calls.result.totalTests, 1);
   assert.equal(prisma.calls.result.failureCode, "TEST_CASE_STORAGE_UNAVAILABLE");
   assert.equal(prisma.calls.progress, false);
+  assert.equal(prisma.calls.sheetProgress.length, 0);
 });
 
 test("worker records a wrong answer and does not mark progress solved", async () => {
@@ -120,5 +138,6 @@ test("worker records a wrong answer and does not mark progress solved", async ()
   assert.equal(prisma.calls.result.passedTests, 0);
   assert.equal(prisma.calls.result.failureCode, "WRONG_ANSWER");
   assert.equal(prisma.calls.progress, false);
+  assert.equal(prisma.calls.sheetProgress.length, 0);
   await storage.remove(wrongOutput.key);
 });

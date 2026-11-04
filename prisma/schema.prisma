@@ -367,6 +367,9 @@ model User {
   recruiterInterviewAudits RecruiterInterviewAudit[]
   liveRoomTokens LiveInterviewRoomToken[]
   liveRoomParticipants LiveInterviewParticipant[]
+  dsaSheetProgress DSASheetProgress[]
+  studentTargetRoles StudentTargetRole[]
+  integrityEvents IntegrityEvent[]
   @@index([role, status])
   @@index([status, createdAt])
 }
@@ -821,6 +824,7 @@ model CodingProblem {
   contestProblems    ContestProblem[]
   contestSubmissions ContestSubmission[]
   assessmentLinks AssessmentCodingProblem[]
+  dsaSheetEntries DSASheetProblem[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   @@index([status, difficulty])
@@ -1865,4 +1869,101 @@ model Appeal {
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   @@index([caseId, status])
+}
+
+// ─── Phase 22: DSA Sheets ─────────────────────────────────────────────────────
+
+model DSASheet {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String          @db.VarChar(200)
+  slug        String          @unique @db.VarChar(200)
+  author      String?         @db.VarChar(200)
+  description String?
+  status      String          @default("PUBLISHED")
+  problems    DSASheetProblem[]
+  progress    DSASheetProgress[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model DSASheetProblem {
+  id          String        @id @default(uuid()) @db.Uuid
+  sheetId     String        @db.Uuid
+  problemId   String?       @db.Uuid
+  externalUrl String?       @db.VarChar(1000)
+  title       String        @db.VarChar(240)
+  difficulty  String?       @db.VarChar(32)
+  topic       String?       @db.VarChar(160)
+  platform    String?       @db.VarChar(80)
+  sequence    Int           @default(0)
+  sheet       DSASheet      @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  problem     CodingProblem? @relation(fields: [problemId], references: [id], onDelete: SetNull)
+  progress    DSASheetProgress[]
+  @@index([sheetId, sequence])
+}
+
+model DSASheetProgress {
+  id              String         @id @default(uuid()) @db.Uuid
+  sheetId         String         @db.Uuid
+  sheetProblemId  String         @db.Uuid
+  userId          String         @db.Uuid
+  status          String         @default("UNSOLVED")
+  solvedAt        DateTime?
+  notes           String?
+  sheet           DSASheet       @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  sheetProblem    DSASheetProblem @relation(fields: [sheetProblemId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([sheetProblemId, userId])
+  @@index([sheetId, userId])
+}
+
+// ─── Phase 23: Target Roles ───────────────────────────────────────────────────
+
+model TargetRole {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String        @unique @db.VarChar(200)
+  slug            String        @unique @db.VarChar(200)
+  description     String?
+  requiredSkills  Json          @default("[]")
+  dsaRequirements Json          @default("{}")
+  coreSubjects    Json          @default("[]")
+  languages       Json          @default("[]")
+  status          String        @default("PUBLISHED")
+  studentRoles    StudentTargetRole[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model StudentTargetRole {
+  id           String     @id @default(uuid()) @db.Uuid
+  userId       String     @db.Uuid
+  roleId       String     @db.Uuid
+  isPrimary    Boolean    @default(false)
+  goalDate     DateTime?
+  createdAt    DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         TargetRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  @@unique([userId, roleId])
+  @@index([userId, isPrimary])
+}
+
+// ─── Phase 27: Integrity Events ───────────────────────────────────────────────
+
+model IntegrityEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  sessionId   String?  @db.VarChar(200)
+  sessionType String   @db.VarChar(80)
+  eventType   String   @db.VarChar(80)
+  severity    String   @db.VarChar(32)
+  metadata    Json?
+  reviewStatus String  @default("PENDING")
+  reviewNote  String?
+  reviewedAt  DateTime?
+  reviewedByUserId String? @db.Uuid
+  occurredAt  DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@index([userId, occurredAt])
+  @@index([sessionType, sessionId, occurredAt])
+  @@index([severity, reviewStatus])
 }

@@ -112,6 +112,15 @@ async function executeSubmission(prisma, submissionId) {
         await tx.contestSubmission.update({ where: { id: contest.id }, data: { solved: accepted, wrongAttempts: priorWrong, score: accepted ? scoreFor({ points: contest.problem.points, penaltyPerWrong: contest.problem.penaltyPerWrong }, priorWrong) : 0 } });
       } else if (accepted) {
         await tx.studentProblemProgress.update({ where: { userId_problemId: { userId: submission.userId, problemId: submission.problemId } }, data: { status: "SOLVED", solvedAt: new Date() } });
+        const sheetEntries = await tx.dSASheetProblem.findMany({
+          where: { problemId: submission.problemId, sheet: { status: "PUBLISHED" } },
+          select: { id: true, sheetId: true },
+        });
+        await Promise.all(sheetEntries.map((entry) => tx.dSASheetProgress.upsert({
+          where: { sheetProblemId_userId: { sheetProblemId: entry.id, userId: submission.userId } },
+          update: { status: "SOLVED", solvedAt: new Date() },
+          create: { sheetId: entry.sheetId, sheetProblemId: entry.id, userId: submission.userId, status: "SOLVED", solvedAt: new Date() },
+        })));
       }
     });
   } catch (error) {

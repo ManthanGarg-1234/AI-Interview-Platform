@@ -34,7 +34,7 @@ function assertWindow(contest, now = new Date()) {
   if (phase === "ENDED") fail("The contest has ended.", "CONTEST_ENDED", 409);
 }
 function publicContest(contest) {
-  return { id: contest.id, title: contest.title, slug: contest.slug, description: contest.description, status: contest.status, startsAt: contest.startsAt, endsAt: contest.endsAt, phase: contestPhase(contest), problemCount: contest.problems?.length ?? contest._count?.problems ?? 0 };
+  return { id: contest.id, title: contest.title, slug: contest.slug, description: contest.description, status: contest.status, startsAt: contest.startsAt, endsAt: contest.endsAt, phase: contestPhase(contest), problemCount: contest.problems?.length ?? contest._count?.problems ?? 0, allowedLanguages: Array.isArray(contest.allowedLanguages) ? contest.allowedLanguages : languages };
 }
 function scoreFor(problem, wrongAttempts) {
   return Math.max(0, problem.points - (problem.penaltyPerWrong * wrongAttempts));
@@ -42,8 +42,16 @@ function scoreFor(problem, wrongAttempts) {
 
 router.get("/", async (req, res, next) => {
   try {
-    const contests = await getPrisma().contest.findMany({ where: { status: { in: ["PUBLISHED", "LIVE", "ENDED"] } }, include: { problems: true }, orderBy: { startsAt: "desc" }, take: 100 });
-    res.json({ data: contests.map(publicContest) });
+    const contests = await getPrisma().contest.findMany({
+      where: { status: { in: ["PUBLISHED", "LIVE", "ENDED"] } },
+      include: {
+        problems: true,
+        registrations: { where: { userId: req.auth.sub }, select: { id: true } },
+      },
+      orderBy: { startsAt: "desc" },
+      take: 100,
+    });
+    res.json({ data: contests.map((contest) => ({ ...publicContest(contest), registered: contest.registrations.length > 0 })) });
   } catch (error) { next(error); }
 });
 

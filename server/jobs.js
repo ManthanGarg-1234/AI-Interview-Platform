@@ -18,21 +18,28 @@ router.get("/", async (req, res, next) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1), limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
     const q = String(req.query.q || "").trim(), location = String(req.query.location || "").trim();
-    const where = { status: "PUBLISHED", ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { description: { contains: q, mode: "insensitive" } }] } : {}), ...(location ? { location: { contains: location, mode: "insensitive" } } : {}) };
+    const employmentType = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERNSHIP"].includes(req.query.employmentType) ? req.query.employmentType : undefined;
+    const where = {
+      status: "PUBLISHED",
+      ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { description: { contains: q, mode: "insensitive" } }, { company: { name: { contains: q, mode: "insensitive" } } }] } : {}),
+      ...(location ? { location: { contains: location, mode: "insensitive" } } : {}),
+      ...(employmentType ? { employmentType } : {}),
+    };
     const [items, total] = await Promise.all([
-      getPrisma().job.findMany({ where, include: { company: { select: { id: true, name: true, website: true } }, skills: { include: { skill: true } } }, orderBy: { publishedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+      getPrisma().job.findMany({ where, include: { company: { select: { id: true, name: true, website: true } }, skills: { include: { skill: true } }, bookmarks: { where: { userId: req.auth.sub }, select: { id: true } } }, orderBy: { publishedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
       getPrisma().job.count({ where }),
     ]);
-    res.json({ data: { items, page, limit, total, pages: Math.ceil(total / limit) } });
+    res.json({ data: { items: items.map(({ bookmarks, ...job }) => ({ ...job, bookmarked: bookmarks.length > 0 })), page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) { next(error); }
 });
 router.get("/me/bookmarks", async (req, res, next) => { try { res.json({ data: await getPrisma().jobBookmark.findMany({ where: { userId: req.auth.sub }, include: { job: { include: { company: true, skills: { include: { skill: true } } } } }, orderBy: { createdAt: "desc" } }) }); } catch (error) { next(error); } });
 router.get("/me/applications", async (req, res, next) => { try { res.json({ data: await getPrisma().application.findMany({ where: { studentUserId: req.auth.sub }, include: { job: { include: { company: true } }, stageHistory: { orderBy: { createdAt: "desc" } } }, orderBy: { updatedAt: "desc" } }) }); } catch (error) { next(error); } });
 router.get("/:id", async (req, res, next) => {
   try {
-    const job = await getPrisma().job.findFirst({ where: { id: req.params.id, status: "PUBLISHED" }, include: { company: true, skills: { include: { skill: true } } } });
+    const job = await getPrisma().job.findFirst({ where: { id: req.params.id, status: "PUBLISHED" }, include: { company: true, skills: { include: { skill: true } }, bookmarks: { where: { userId: req.auth.sub }, select: { id: true } } } });
     if (!job) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Job not found." } });
-    res.json({ data: job });
+    const { bookmarks, ...data } = job;
+    res.json({ data: { ...data, bookmarked: bookmarks.length > 0 } });
   } catch (error) { next(error); }
 });
 router.post("/:id/bookmark", async (req, res, next) => {

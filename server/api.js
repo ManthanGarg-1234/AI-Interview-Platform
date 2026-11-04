@@ -21,6 +21,9 @@ const recruiterInterviews = require("./recruiter-interviews");
 const jobs = require("./jobs");
 const contests = require("./contests");
 const liveInterviews = require("./live-interviews");
+const subjects = require("./subjects");
+const targetRoles = require("./target-roles");
+const dsaSheets = require("./dsa-sheets");
 
 const router = express.Router();
 const upload = multer({
@@ -207,6 +210,37 @@ router.get("/coding/submissions", authenticate, requireRole("STUDENT"), coding.h
 router.get("/coding/submissions/:id", authenticate, requireRole("STUDENT"), coding.getSubmission);
 router.get("/coding/stats", authenticate, requireRole("STUDENT"), coding.stats);
 
+// Coding topics list
+router.get("/coding/topics", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const topics = await getPrisma().topic.findMany({
+      where: { problemTopics: { some: {} } },
+      select: { id: true, name: true, slug: true, _count: { select: { problemTopics: true } } },
+      orderBy: { name: "asc" },
+    });
+    res.json({ data: topics });
+  } catch (error) { next(error); }
+});
+
+// Bookmark a problem
+router.post("/coding/problems/:id/bookmark", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const problem = await getPrisma().codingProblem.findFirst({ where: { id: req.params.id, status: "PUBLISHED" } });
+    if (!problem) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Problem not found." } });
+    const bm = await getPrisma().bookmark.upsert({ where: { userId_problemId: { userId: req.auth.sub, problemId: problem.id } }, update: {}, create: { userId: req.auth.sub, problemId: problem.id } });
+    res.status(201).json({ data: bm });
+  } catch (error) { next(error); }
+});
+router.delete("/coding/problems/:id/bookmark", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try { await getPrisma().bookmark.deleteMany({ where: { userId: req.auth.sub, problemId: req.params.id } }); res.status(204).send(); } catch (error) { next(error); }
+});
+router.get("/coding/bookmarks", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const bookmarks = await getPrisma().bookmark.findMany({ where: { userId: req.auth.sub }, include: { problem: { include: { topics: { include: { topic: true } }, languageConfigs: { where: { enabled: true } } } } }, orderBy: { createdAt: "desc" } });
+    res.json({ data: bookmarks.map((b) => ({ ...b.problem, topics: b.problem.topics.map(({ topic }) => topic.name), languages: b.problem.languageConfigs.map(({ language }) => language) })) });
+  } catch (error) { next(error); }
+});
+
 router.use("/contests", authenticate, requireRole("STUDENT"), contests.router);
 
 router.use("/me/interviews", authenticate, requireRole("STUDENT"), interview);
@@ -222,5 +256,11 @@ router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), rec
 router.use("/recruiter-interviews", authenticate, requireRole("STUDENT", "RECRUITER"), liveInterviews);
 router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), liveInterviews);
 router.use("/jobs", authenticate, requireRole("STUDENT"), jobs);
+router.use("/subjects", authenticate, requireRole("STUDENT"), subjects);
+router.use("/admin/learning", authenticate, requireRole("ADMIN"), subjects);
+router.use("/dsa-sheets", authenticate, requireRole("STUDENT"), dsaSheets.studentRouter);
+router.use("/admin/dsa-sheets", authenticate, requireRole("ADMIN"), dsaSheets.adminRouter);
+router.use("/target-roles", authenticate, requireRole("STUDENT"), targetRoles.studentRouter);
+router.use("/admin/target-roles", authenticate, requireRole("ADMIN"), targetRoles.adminRouter);
 
 module.exports = router;
