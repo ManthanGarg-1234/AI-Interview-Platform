@@ -17,6 +17,7 @@ const performance = require("./performance");
 const notifications = require("./notifications");
 const admin = require("./admin");
 const recruiter = require("./recruiter");
+const recruiterInterviews = require("./recruiter-interviews");
 const jobs = require("./jobs");
 const contests = require("./contests");
 
@@ -215,6 +216,8 @@ router.use("/admin", authenticate, requireRole("ADMIN"), admin);
 router.use("/admin/contests", authenticate, requireRole("ADMIN"), contests.adminRouter);
 router.use("/organizer/contests", authenticate, requireRole("ADMIN", "RECRUITER"), contests.adminRouter);
 router.use("/recruiter", authenticate, requireRole("RECRUITER"), recruiter);
+router.use("/recruiter/interviews", authenticate, requireRole("RECRUITER"), recruiterInterviews);
+router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), recruiterInterviews);
 router.use("/jobs", authenticate, requireRole("STUDENT"), jobs);
 
 module.exports = router;

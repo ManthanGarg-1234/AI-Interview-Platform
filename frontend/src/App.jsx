@@ -32,6 +32,9 @@ import RecruiterAssessmentReviewsPage from "./pages/RecruiterAssessmentReviewsPa
 import JobDetailPage from "./pages/JobDetailPage";
 import ContestsPage from "./pages/ContestsPage";
 import ContestWorkspacePage from "./pages/ContestWorkspacePage";
+import RecruiterInterviewsPage from "./pages/RecruiterInterviewsPage";
+import StudentInterviewsPage from "./pages/StudentInterviewsPage";
+import InterviewerWorkspacePage from "./pages/InterviewerWorkspacePage";
 
 function useCurrentUser() {
   const location = useLocation();
@@ -93,6 +96,8 @@ function AppRoutes() {
       <Route path="/student/contests" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><ContestsPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/contests/:id" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><ContestWorkspacePage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewDashboardPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/student/recruiter-interviews" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><StudentInterviewsPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/interviews/:id/workspace" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><InterviewerWorkspacePage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews/new" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewSetupPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews/history" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewHistoryPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/student/interviews/:id/room" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><InterviewRoomPage /></PortalLayout></ProtectedRoute>} />
@@ -110,6 +115,7 @@ function AppRoutes() {
       <Route path="/student/*" element={<ProtectedRoute roles={["STUDENT"]}><PortalLayout user={user}><Dashboard user={user} /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/*" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterDashboardPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/jobs" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterJobsPage /></PortalLayout></ProtectedRoute>} />
+      <Route path="/recruiter/interviews" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterInterviewsPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/assessments" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterAssessmentsPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/recruiter/assessments/:id/reviews" element={<ProtectedRoute roles={["RECRUITER"]}><PortalLayout user={user}><RecruiterAssessmentReviewsPage /></PortalLayout></ProtectedRoute>} />
       <Route path="/admin/*" element={<ProtectedRoute roles={["ADMIN"]}><PortalLayout user={user}><AdminDashboardPage /></PortalLayout></ProtectedRoute>} />
