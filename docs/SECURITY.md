@@ -45,10 +45,10 @@ and data-retention policies must be established before production deployment.
 
 - Use secure HTTP-only cookies, short-lived access tokens, rotated refresh
   tokens, server-side session records, revocation, and CSRF protection.
-- Keep all LLM credentials, Judge0 credentials, model configuration, and cost
+- Keep all LLM credentials, JDoodle credentials, model configuration, and cost
   controls on the backend.
-- Use Judge0 behind a dedicated adapter in Release 1; Express never executes
-  untrusted code.
+- Use JDoodle behind the existing dedicated adapter and BullMQ worker in
+  Release 1; Express and the worker host never execute submitted code locally.
 - Use configurable retention policies and consent records. Proposed engineering
   defaults are documented in [DATA_RETENTION_POLICY.md](./DATA_RETENTION_POLICY.md)
   and require legal/product approval before production.
