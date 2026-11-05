@@ -4,7 +4,8 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 const languageTemplates = {
-  Java: "import java.util.*;\n\npublic class Main {\n  public static void main(String[] args) {\n    // Read from stdin and write the answer to stdout.\n  }\n}",
+  C: "#include <stdio.h>\n\nint main(void) {\n    /* Read from stdin and write the answer to stdout. */\n    return 0;\n}",
+  Java: "import java.util.*;\n\npublic class Main {\n public static void main(String[] args) {\n // Read from stdin and write the answer to stdout.\n }\n}",
   "C++": "#include <bits/stdc++.h>\nusing namespace std;\nint main() {\n  // Read from stdin and write the answer to stdout.\n}",
   Python: "import sys\n\n# Read from stdin and write the answer to stdout.\n",
   JavaScript: "'use strict';\n\n// Read from stdin and write the answer to stdout.\n",

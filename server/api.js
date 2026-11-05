@@ -11,6 +11,7 @@ const storage = require("./private-storage");
 const { enqueueResumeProcessing } = require("./resume-processing");
 const { enqueueResumeAnalysis, processResumeAnalysis } = require("./resume-analysis");
 const coding = require("./coding");
+const codingAdmin = require("./coding-admin");
 const interview = require("./interview");
 const assessment = require("./assessment");
 const performance = require("./performance");
@@ -201,6 +202,7 @@ router.patch("/me/profile-suggestions/:id", authenticate, requireRole("STUDENT")
 });
 
 router.get("/coding/problems", authenticate, requireRole("STUDENT"), coding.listProblems);
+router.get("/coding/execution-health", authenticate, requireRole("STUDENT"), coding.executionHealth);
 router.get("/coding/problems/:id", authenticate, requireRole("STUDENT"), coding.getProblem);
 router.get("/coding/problems/:id/starter-code", authenticate, requireRole("STUDENT"), coding.starterCode);
 router.post("/coding/runs", authenticate, requireRole("STUDENT"), coding.createRun);
@@ -247,6 +249,7 @@ router.use("/me/interviews", authenticate, requireRole("STUDENT"), interview);
 router.use("/me/assessments", authenticate, requireRole("STUDENT"), assessment);
 router.use("/me/notifications", authenticate, notifications.router);
 router.use("/me", authenticate, requireRole("STUDENT"), performance);
+router.use("/admin/coding", authenticate, requireRole("ADMIN"), codingAdmin);
 router.use("/admin", authenticate, requireRole("ADMIN"), admin);
 router.use("/admin/contests", authenticate, requireRole("ADMIN"), contests.adminRouter);
 router.use("/organizer/contests", authenticate, requireRole("ADMIN", "RECRUITER"), contests.adminRouter);

@@ -113,6 +113,11 @@ enum SubmissionType {
   CONTEST
 }
 
+enum CodingExecutionMode {
+  STDIN_STDOUT
+  FUNCTION_BASED
+}
+
 enum ContestStatus {
   DRAFT
   PUBLISHED
@@ -128,9 +133,19 @@ enum SubmissionStatus {
   VALIDATED
   QUEUED
   DISPATCHED
+  PROCESSING
+  EVALUATING
   RUNNING
   COMPLETED
   FAILED
+  ACCEPTED
+  WRONG_ANSWER
+  COMPILATION_ERROR
+  RUNTIME_ERROR
+  TIME_LIMIT_EXCEEDED
+  MEMORY_LIMIT_EXCEEDED
+  OUTPUT_LIMIT_EXCEEDED
+  SYSTEM_ERROR
   EXPIRED
   CANCELLED
 }
@@ -143,6 +158,8 @@ enum Verdict {
   RUNTIME_ERROR
   TIME_LIMIT_EXCEEDED
   MEMORY_LIMIT_EXCEEDED
+  OUTPUT_LIMIT_EXCEEDED
+  SYSTEM_ERROR
   INTERNAL_ERROR
 }
 
@@ -803,6 +820,13 @@ model CodingProblem {
   id                String          @id @default(uuid()) @db.Uuid
   slug              String          @unique @db.VarChar(180)
   title             String          @db.VarChar(240)
+  executionMode            CodingExecutionMode @default(STDIN_STDOUT)
+  functionName             String?
+  className                String?
+  parameterDefinitions     Json?
+  returnType               String?
+  inputSerializationFormat String?             @db.VarChar(40)
+  outputSerializationFormat String?             @db.VarChar(40)
   statement         String
   inputFormat       String?
   outputFormat      String?
@@ -836,6 +860,7 @@ model ProblemLanguageConfig {
   language          String         @db.VarChar(40)
   starterCode       String
   functionSignature String?
+  harnessTemplate   String?
   enabled           Boolean        @default(true)
   problem           CodingProblem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
   @@unique([problemId, language])
@@ -857,6 +882,8 @@ model TestCase {
   inputRef          String
   expectedOutputRef String
   sequence          Int
+  weight            Decimal         @default(1.0) @db.Decimal(8, 2)
+  comparisonConfig  Json            @default("{\"mode\":\"TRIM_TRAILING_WHITESPACE\"}")
   enabled           Boolean         @default(true)
   problem           CodingProblem   @relation(fields: [problemId], references: [id], onDelete: Restrict)
   @@index([problemId, kind, sequence])
@@ -911,6 +938,7 @@ model CodeRun {
   stdout            String?
   stderr            String?
   compileOutput     String?
+  perTestResults    Json?
   createdAt         DateTime        @default(now())
   completedAt       DateTime?
   user              User            @relation(fields: [userId], references: [id], onDelete: Restrict)
