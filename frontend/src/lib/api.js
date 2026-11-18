@@ -1,4 +1,5 @@
 import axios from "axios";
+import { mapApiValidationError } from "./recruiterValidation";
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api/v1",
@@ -14,8 +15,7 @@ api.interceptors.request.use((config) => {
 });
 
 export function getApiError(error) {
-  return error?.response?.data?.error?.message
-    || error?.response?.data?.message
-    || error?.message
-    || "Something went wrong. Please try again.";
+  return mapApiValidationError(error).summary;
 }
+
+export { mapApiValidationError };

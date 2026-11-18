@@ -1,0 +1,181 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: auth.spec.js >> role routing prevents cross-portal access
+- Location: e2e\auth.spec.js:63:1
+
+# Error details
+
+```
+Test timeout of 45000ms exceeded.
+```
+
+# Page snapshot
+
+```yaml
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - complementary [ref=f1e4]:
+      - link "CP CareerPrepAI" [ref=f1e5] [cursor=pointer]:
+        - /url: /student
+        - generic [ref=f1e6]: CP
+        - generic [ref=f1e7]: CareerPrepAI
+      - paragraph [ref=f1e8]: student portal
+      - navigation [ref=f1e9]:
+        - link "Dashboard" [ref=f1e10] [cursor=pointer]:
+          - /url: /student
+        - link "Job opportunities" [ref=f1e16] [cursor=pointer]:
+          - /url: /student/jobs
+        - link "Performance" [ref=f1e21] [cursor=pointer]:
+          - /url: /student/analytics
+        - link "Study planner" [ref=f1e24] [cursor=pointer]:
+          - /url: /student/planner
+        - link "AI mentor" [ref=f1e27] [cursor=pointer]:
+          - /url: /student/mentor
+        - link "Resources" [ref=f1e31] [cursor=pointer]:
+          - /url: /student/resources
+        - link "Notifications" [ref=f1e34] [cursor=pointer]:
+          - /url: /notifications
+        - link "Profile" [ref=f1e37] [cursor=pointer]:
+          - /url: /student/profile
+        - link "Resume analysis" [ref=f1e41] [cursor=pointer]:
+          - /url: /student/resume-analysis
+        - link "Coding practice" [ref=f1e46] [cursor=pointer]:
+          - /url: /student/coding
+        - link "Contests" [ref=f1e51] [cursor=pointer]:
+          - /url: /student/contests
+        - link "AI interviews" [ref=f1e58] [cursor=pointer]:
+          - /url: /student/interviews
+        - link "Recruiter interviews" [ref=f1e61] [cursor=pointer]:
+          - /url: /student/recruiter-interviews
+        - link "Assessments" [ref=f1e64] [cursor=pointer]:
+          - /url: /student/assessments
+        - button "Sign out" [ref=f1e69] [cursor=pointer]
+    - generic [ref=f1e73]:
+      - banner [ref=f1e74]:
+        - generic [ref=f1e75]:
+          - generic [ref=f1e76]:
+            - paragraph [ref=f1e77]: E2E STUDENT
+            - paragraph [ref=f1e78]: e2e-1794982652970-12428-account-e4c93eec-f42c-40de-919f-7b833a3cede7@example.test
+          - generic [ref=f1e79]: E
+      - main [ref=f1e83]:
+        - generic [ref=f1e84]:
+          - generic [ref=f1e85]:
+            - generic [ref=f1e86]:
+              - paragraph [ref=f1e87]: Student dashboard
+              - heading "Welcome back, E2E Student" [level=1] [ref=f1e88]
+              - paragraph [ref=f1e89]: A snapshot of your recorded preparation and next steps.
+            - link "Improve your profile" [ref=f1e90] [cursor=pointer]:
+              - /url: /student/profile
+          - region "Career preparation metrics" [ref=f1e91]:
+            - link [ref=f1e92] [cursor=pointer]:
+              - /url: /student/profile
+              - generic [ref=f1e93]:
+                - paragraph [ref=f1e94]: Profile completion
+                - paragraph [ref=f1e95]: 0%
+            - link [ref=f1e96] [cursor=pointer]:
+              - /url: /student/resume-analysis
+              - generic [ref=f1e97]:
+                - paragraph [ref=f1e98]: Resume analyses
+                - paragraph [ref=f1e99]: "0"
+                - paragraph [ref=f1e100]: No scored analysis yet
+            - link [ref=f1e101] [cursor=pointer]:
+              - /url: /student/interviews
+              - generic [ref=f1e102]:
+                - paragraph [ref=f1e103]: AI interviews
+                - paragraph [ref=f1e104]: "0"
+                - paragraph [ref=f1e105]: No completed interviews yet
+            - link [ref=f1e106] [cursor=pointer]:
+              - /url: /student/jobs
+              - generic [ref=f1e107]:
+                - paragraph [ref=f1e108]: Job applications
+                - paragraph [ref=f1e109]: "0"
+                - paragraph [ref=f1e110]: 0 unread notifications
+          - generic [ref=f1e111]:
+            - article [ref=f1e112]:
+              - generic [ref=f1e113]:
+                - generic [ref=f1e114]:
+                  - heading "Weekly learning activity" [level=2] [ref=f1e115]
+                  - paragraph [ref=f1e116]: Recorded activity only; no estimated study hours.
+                - link "View performance" [ref=f1e117] [cursor=pointer]:
+                  - /url: /student/analytics
+              - img "Recorded learning activity for the last seven days" [ref=f1e118]:
+                - application [ref=f1e121]:
+                  - generic [ref=f1e132]:
+                    - generic [ref=f1e133]:
+                      - generic [ref=f1e134]: Thu
+                      - generic [ref=f1e136]: Fri
+                      - generic [ref=f1e138]: Sat
+                      - generic [ref=f1e140]: Sun
+                      - generic [ref=f1e142]: Mon
+                      - generic [ref=f1e144]: Tue
+                      - generic [ref=f1e146]: Wed
+                    - generic [ref=f1e148]:
+                      - generic [ref=f1e149]: "0"
+                      - generic [ref=f1e151]: "1"
+                      - generic [ref=f1e153]: "2"
+                      - generic [ref=f1e155]: "3"
+                      - generic [ref=f1e157]: "4"
+            - article [ref=f1e159]:
+              - generic [ref=f1e160]:
+                - generic [ref=f1e161]:
+                  - heading "Study plan" [level=2] [ref=f1e162]
+                  - paragraph [ref=f1e163]: 0 active plan(s)
+                - link "Open planner" [ref=f1e164] [cursor=pointer]:
+                  - /url: /student/planner
+              - paragraph [ref=f1e165]: No study tasks are recorded yet.
+              - heading "Application statuses" [level=3] [ref=f1e166]
+              - paragraph [ref=f1e167]: No applications recorded yet.
+          - generic [ref=f1e168]:
+            - article [ref=f1e169]:
+              - generic [ref=f1e170]:
+                - heading "Upcoming recruiter interviews" [level=2] [ref=f1e171]
+                - link "View all" [ref=f1e172] [cursor=pointer]:
+                  - /url: /student/recruiter-interviews
+              - paragraph [ref=f1e173]: No upcoming recruiter interviews.
+            - article [ref=f1e174]:
+              - generic [ref=f1e175]:
+                - heading "Assessments to complete" [level=2] [ref=f1e176]
+                - link "View assessments" [ref=f1e177] [cursor=pointer]:
+                  - /url: /student/assessments
+              - paragraph [ref=f1e178]: No open assigned assessments.
+          - generic [ref=f1e179]:
+            - article [ref=f1e180]:
+              - generic [ref=f1e181]:
+                - heading "Recent activity" [level=2] [ref=f1e182]
+                - link "Performance" [ref=f1e183] [cursor=pointer]:
+                  - /url: /student/analytics
+              - paragraph [ref=f1e184]: No recent learning activity has been recorded.
+            - article [ref=f1e185]:
+              - heading "Recommended next actions" [level=2] [ref=f1e186]
+              - generic [ref=f1e187]:
+                - link [ref=f1e188] [cursor=pointer]:
+                  - /url: /student/profile
+                  - paragraph [ref=f1e189]: Complete your profile
+                  - paragraph [ref=f1e190]: A more complete profile helps recruiters understand your experience.
+                - link [ref=f1e191] [cursor=pointer]:
+                  - /url: /student/profile
+                  - paragraph [ref=f1e192]: Add a resume
+                  - paragraph [ref=f1e193]: Upload a resume to unlock resume analysis and job applications.
+                - link [ref=f1e194] [cursor=pointer]:
+                  - /url: /student/planner
+                  - paragraph [ref=f1e195]: Plan your next study session
+                  - paragraph [ref=f1e196]: Turn your preparation goals into trackable tasks.
+                - link [ref=f1e197] [cursor=pointer]:
+                  - /url: /student/interviews
+                  - paragraph [ref=f1e198]: Try an AI interview
+                  - paragraph [ref=f1e199]: Practice answering role-specific interview questions.
+              - generic [ref=f1e200]:
+                - link "Study planner" [ref=f1e201] [cursor=pointer]:
+                  - /url: /student/planner
+                - link "Explore jobs" [ref=f1e202] [cursor=pointer]:
+                  - /url: /student/jobs
+                - link "AI interview" [ref=f1e203] [cursor=pointer]:
+                  - /url: /student/interviews
+  - generic [aria-hidden] [ref=f1e204]: "0"
+```

@@ -14,7 +14,7 @@ The project is a browser-first CareerPrepAI prototype with:
   documentation.
 - 1 shared CSS file (`css/style.css`, 44,410 bytes, approximately 2,235 lines).
 - 22 browser JavaScript files under `js/` (approximately 4,297 lines).
-- 7 server JavaScript files including tests under `server/`.
+- 7 server JavaScript files including tests under `backend/`.
 - A small Express 5 coding API with JSON-file submission persistence.
 - Browser `localStorage` as the primary application database and demo session store.
 - No production authentication, PostgreSQL, Prisma, Redis, queue, AI provider, or
@@ -153,7 +153,7 @@ specified automated frontend, backend, security, and E2E test suites.
 |---|---|---|
 | Browser localStorage | Primary data store | Replace with API/Prisma; retain only UI preferences/cache |
 | Express | Existing coding API | Expand into modular versioned backend |
-| JSON file | `server/data/submissions.json` | Replace with PostgreSQL records; preserve fixture semantics |
+| JSON file | `backend/data/submissions.json` | Replace with PostgreSQL records; preserve fixture semantics |
 | Local Java/Javac | Available and used by tests | Development-only runner; never production isolation |
 | Judge0 | Optional via `JUDGE0_URL` and credentials | Evaluate as isolated execution provider |
 | Browser media APIs | Explicit microphone check only | Add WebRTC signaling/TURN and consent |

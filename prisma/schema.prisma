@@ -13,6 +13,10 @@ enum UserRole {
   ADMIN
 }
 
+enum OAuthProvider {
+  GOOGLE
+}
+
 enum AccountStatus {
   PENDING_VERIFICATION
   ACTIVE
@@ -58,7 +62,18 @@ enum ApplicationStatus {
   TECHNICAL_INTERVIEW
   HR_INTERVIEW
   SELECTED
+  OFFER_RELEASED
+  HIRED
   REJECTED
+  WITHDRAWN
+}
+
+enum OfferStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
   WITHDRAWN
 }
 
@@ -88,6 +103,19 @@ enum AssessmentStatus {
   PUBLISHED
   PAUSED
   ARCHIVED
+}
+
+enum CodingCatalogueStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum PlacementProblemStatus {
+  NOT_STARTED
+  ATTEMPTED
+  SOLVED
+  REVISION_REQUIRED
 }
 
 enum AssignmentStatus {
@@ -213,6 +241,8 @@ enum ScorecardStatus {
 }
 
 enum ConsentType {
+  PLATFORM_TERMS
+  PRIVACY_POLICY
   PROFILE_DISCOVERY
   RESUME_SHARING
   ASSESSMENT_SHARING
@@ -296,20 +326,30 @@ enum AIRequestStatus {
 model User {
   id                 String          @id @default(uuid()) @db.Uuid
   email              String          @unique @db.VarChar(320)
-  passwordHash       String          @db.VarChar(255)
+  emailNormalized    String          @unique @db.VarChar(320)
+  fullName           String?         @db.VarChar(200)
+  passwordHash       String?         @db.VarChar(255)
+  profileImageUrl    String?         @db.VarChar(2048)
   role               UserRole
   status             AccountStatus   @default(PENDING_VERIFICATION)
   emailVerifiedAt    DateTime?
   lastLoginAt        DateTime?
+  failedLoginAttempts  Int             @default(0)
+  loginLockedUntil     DateTime?
   suspendedAt        DateTime?
   deletedAt          DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   studentProfile     StudentProfile?
   recruiterProfile   RecruiterProfile?
+  oauthAccounts      OAuthAccount[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
   sessions           UserSession[]
+  tokenFamilies      TokenFamily[]
   refreshTokens      RefreshToken[]  @relation("RefreshTokenUser")
   companyMembers     CompanyMember[]
+  companyMembershipInvitations CompanyMember[] @relation("CompanyMemberInviter")
   applications       Application[]   @relation("ApplicationStudent")
   createdJobs        Job[]            @relation("JobCreator")
   createdAssessments Assessment[]     @relation("AssessmentCreator")
@@ -324,6 +364,10 @@ model User {
   bookmarks          Bookmark[]
   jobBookmarks       JobBookmark[]
   codingProgress     StudentProblemProgress[]
+  sheetProblemProgress SheetProblemProgress[]
+  codingSheetEngagements CodingSheetEngagement[]
+  placementBookmarks PlacementProblemBookmark[]
+  placementNotes    PlacementProblemNote[]
   codeRuns           CodeRun[]
   organizedContests  Contest[] @relation("ContestOrganizer")
   contestRegistrations ContestRegistration[]
@@ -365,6 +409,8 @@ model User {
   scorecardsFinalized RecruiterScorecard[] @relation("ScorecardFinalizer")
   scorecardCorrections RecruiterScorecardCorrection[]
   recruiterInterviewAudits RecruiterInterviewAudit[]
+  receivedOffers    Offer[] @relation("OfferStudent")
+  createdOffers     Offer[] @relation("OfferCreator")
   liveRoomTokens LiveInterviewRoomToken[]
   liveRoomParticipants LiveInterviewParticipant[]
   @@index([role, status])
@@ -378,10 +424,28 @@ model UserSession {
   ipAddress          String?  @db.VarChar(64)
   userAgent          String?  @db.VarChar(512)
   expiresAt          DateTime
+  lastActivityAt     DateTime @default(now())
   revokedAt          DateTime?
   revokeReason       String?
   createdAt          DateTime @default(now())
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenFamily        TokenFamily?
+  @@index([userId, revokedAt, expiresAt])
+  @@index([userId, createdAt])
+}
+
+model TokenFamily {
+  id            String         @id @default(uuid()) @db.Uuid
+  userId        String         @db.Uuid
+  sessionId     String?        @unique @db.Uuid
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokeReason  String?        @db.VarChar(100)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session       UserSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  refreshTokens RefreshToken[]
   @@index([userId, revokedAt, expiresAt])
 }
 
@@ -398,9 +462,48 @@ model RefreshToken {
   revokeReason      String?
   createdAt         DateTime      @default(now())
   user              User          @relation("RefreshTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  family            TokenFamily   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   @@index([userId, familyId, revokedAt])
   @@index([familyId, expiresAt])
   @@unique([replacedById])
+}
+
+model OAuthAccount {
+  id                  String       @id @default(uuid()) @db.Uuid
+  userId              String       @db.Uuid
+  provider            OAuthProvider
+  providerAccountId   String       @db.VarChar(255)
+  providerEmail       String?      @db.VarChar(320)
+  providerEmailVerified Boolean?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+  @@index([userId, provider])
+}
+
+model EmailVerificationToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique @db.VarChar(64)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  tokenHash   String    @unique @db.VarChar(64)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
 }
 
 model StudentProfile {
@@ -534,9 +637,14 @@ model RecruiterProfile {
 model Company {
   id                String        @id @default(uuid()) @db.Uuid
   name              String        @db.VarChar(200)
+  slug              String        @unique @default(cuid()) @db.VarChar(240)
+  officialEmailDomain String?      @db.VarChar(253)
   website           String?       @db.VarChar(500)
+  logoUrl           String?       @db.VarChar(2048)
   description       String?
+  metadata          Json?
   status            CompanyStatus @default(PENDING_VERIFICATION)
+  verifiedAt        DateTime?
   members           CompanyMember[]
   jobs              Job[]
   verifications     CompanyVerification[]
@@ -545,6 +653,7 @@ model Company {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   @@index([status, name])
+  @@index([officialEmailDomain])
 }
 
 model CompanyMember {
@@ -554,10 +663,15 @@ model CompanyMember {
   role              CompanyMemberRole
   active            Boolean           @default(true)
   invitedAt         DateTime          @default(now())
+  invitedByUserId   String?           @db.Uuid
+  invitationEmail   String?           @db.VarChar(320)
+  invitationTokenHash String?         @unique @db.VarChar(64)
+  invitationExpiresAt DateTime?
   acceptedAt        DateTime?
   deactivatedAt     DateTime?
   company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user              User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  invitedBy         User?             @relation("CompanyMemberInviter", fields: [invitedByUserId], references: [id], onDelete: SetNull)
   @@unique([companyId, userId])
   @@index([userId, active])
   @@index([companyId, role, active])
@@ -602,6 +716,7 @@ model Job {
   skills            JobSkill[]
   applications      Application[]
   bookmarks         JobBookmark[]
+  offers            Offer[]
   assessments       AssessmentAssignment[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -639,6 +754,8 @@ model Application {
   resumeVersionId   String?           @db.Uuid
   status            ApplicationStatus @default(APPLIED)
   consentSnapshot   Json
+  internalTags      Json          @default("[]")
+  offers            Offer[]
   appliedAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   job               Job               @relation(fields: [jobId], references: [id], onDelete: Restrict)
@@ -653,6 +770,7 @@ model Application {
   @@unique([jobId, studentUserId, reapplicationNumber])
   @@index([studentUserId, status, updatedAt])
   @@index([jobId, status, updatedAt])
+  @@index([jobId, status, appliedAt])
 }
 
 model ApplicationStageHistory {
@@ -666,6 +784,7 @@ model ApplicationStageHistory {
   application       Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   changedBy         User              @relation("StageChangedBy", fields: [changedByUserId], references: [id], onDelete: Restrict)
   @@index([applicationId, createdAt])
+  @@index([toStatus, createdAt])
 }
 
 model RecruiterNote {
@@ -723,6 +842,8 @@ model ResumeVersion {
   version           Int
   parsedText        String?
   parserVersion     String?
+  parseQuality      String?
+  parserWarning     String?
   createdByUserId   String            @db.Uuid
   resume            Resume            @relation("ResumeVersions", fields: [resumeId], references: [id], onDelete: Cascade)
   activeForResume   Resume?           @relation("ResumeActiveVersion")
@@ -824,6 +945,43 @@ model CodingProblem {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   @@index([status, difficulty])
+}
+
+model Problem {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  slug               String                   @unique @db.VarChar(220)
+  topicId            String                   @db.Uuid
+  title              String                   @db.VarChar(240)
+  summary            String?
+  subtopic           String?                  @db.VarChar(160)
+  difficulty         String                   @db.VarChar(32)
+  platform           String                   @db.VarChar(32)
+  url                String                   @db.VarChar(2048)
+  canonicalUrl       String?                  @unique @db.VarChar(2048)
+  canonicalProblemId String?                  @db.Uuid
+  attribution        String?                  @db.VarChar(500)
+  placementPriority  Int?
+  estimatedMinutes   Int?
+  status             CodingCatalogueStatus    @default(PUBLISHED)
+  verifiedAt         DateTime?
+  topic              Topic                    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  canonicalProblem   Problem?                  @relation("ProblemAliases", fields: [canonicalProblemId], references: [id], onDelete: Restrict)
+  aliases            Problem[]                 @relation("ProblemAliases")
+  sheetAssociations  SheetProblem[]
+  codingTopics       CodingProblemTopic[]
+  patterns           CodingProblemPattern[]
+  companies          CodingProblemCompany[]
+  progress           SheetProblemProgress[]
+  bookmarks          PlacementProblemBookmark[]
+  notes              PlacementProblemNote[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@unique([topicId, url])
+  @@index([topicId, difficulty])
+  @@index([status, difficulty, platform])
+  @@index([status, placementPriority])
+  @@index([canonicalProblemId])
 }
 
 model ProblemLanguageConfig {
@@ -1172,6 +1330,7 @@ model AssessmentAttempt {
   reviews           AssessmentReview[]
   @@unique([assignmentId, attemptNumber])
   @@index([userId, status])
+  @@index([assignmentId, submittedAt])
 }
 
 model AssessmentAnswer {
@@ -1204,6 +1363,7 @@ model Subject {
   slug              String              @unique @db.VarChar(160)
   status            String              @default("PUBLISHED")
   topics            Topic[]
+  sheet             Sheet?
   questions         Question[]
   resources         LearningResource[]
   createdAt         DateTime            @default(now())
@@ -1220,10 +1380,152 @@ model Topic {
   questions         Question[]
   resources         LearningResource[]
   problemTopics     ProblemTopic[]
+  sheetProblems     Problem[]
   progress          LearningProgress[]
   activities        StudentActivity[]
   tasks             StudyTask[]
   @@unique([subjectId, slug])
+}
+
+model Sheet {
+  id              String                @id @default(uuid()) @db.Uuid
+  slug            String                @unique @db.VarChar(220)
+  name            String                @unique @db.VarChar(200)
+  description     String
+  source          String                @db.VarChar(160)
+  category        String                @default("DSA") @db.VarChar(80)
+  estimatedMinutes Int?
+  status          CodingCatalogueStatus @default(PUBLISHED)
+  subjectId       String                @unique @db.Uuid
+  subject         Subject               @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  problems        SheetProblem[]
+  engagements     CodingSheetEngagement[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  @@index([status, category])
+  @@index([status, source])
+}
+
+model SheetProblem {
+  sheetId   String   @db.Uuid
+  problemId String   @db.Uuid
+  topicId   String   @db.Uuid
+  sequence  Int
+  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  topic     CodingTopic @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  @@id([sheetId, problemId])
+  @@unique([sheetId, sequence])
+  @@index([sheetId, topicId, sequence])
+}
+
+model CodingSheetEngagement {
+  userId         String   @db.Uuid
+  sheetId        String   @db.Uuid
+  firstStartedAt DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sheet          Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  @@id([userId, sheetId])
+  @@index([sheetId, lastActivityAt])
+}
+
+model SheetProblemProgress {
+  id          String                @id @default(uuid()) @db.Uuid
+  userId      String                @db.Uuid
+  problemId   String                @db.Uuid
+  status      PlacementProblemStatus @default(NOT_STARTED)
+  attempts    Int                   @default(0)
+  solvedAt    DateTime?
+  completedAt DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem     Problem               @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@unique([userId, problemId])
+  @@index([userId, status])
+  @@index([problemId, status])
+}
+
+model CodingTopic {
+  id        String               @id @default(uuid()) @db.Uuid
+  slug      String               @unique @db.VarChar(160)
+  name      String               @unique @db.VarChar(160)
+  category  String?              @db.VarChar(80)
+  subtopics CodingSubtopic[]
+  problems  CodingProblemTopic[]
+  sheetLinks SheetProblem[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}
+
+model CodingSubtopic {
+  id        String   @id @default(uuid()) @db.Uuid
+  topicId   String   @db.Uuid
+  slug      String   @db.VarChar(180)
+  name      String   @db.VarChar(180)
+  topic     CodingTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  @@unique([topicId, slug])
+  @@unique([topicId, name])
+}
+
+model CodingPattern {
+  id        String                    @id @default(uuid()) @db.Uuid
+  slug      String                    @unique @db.VarChar(180)
+  name      String                    @unique @db.VarChar(180)
+  problems  CodingProblemPattern[]
+  createdAt DateTime                  @default(now())
+}
+
+model CodingProblemTopic {
+  problemId String      @db.Uuid
+  topicId   String      @db.Uuid
+  isPrimary Boolean     @default(false)
+  problem   Problem     @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  topic     CodingTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  @@id([problemId, topicId])
+  @@index([topicId, problemId])
+}
+
+model CodingProblemPattern {
+  problemId String       @db.Uuid
+  patternId String       @db.Uuid
+  problem   Problem      @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  pattern   CodingPattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+  @@id([problemId, patternId])
+  @@index([patternId, problemId])
+}
+
+model CodingProblemCompany {
+  problemId  String   @db.Uuid
+  companyName String @db.VarChar(160)
+  evidenceUrl String @db.VarChar(2048)
+  verifiedAt DateTime?
+  problem    Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@id([problemId, companyName])
+  @@index([companyName])
+}
+
+model PlacementProblemBookmark {
+  userId    String   @db.Uuid
+  problemId String   @db.Uuid
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@id([userId, problemId])
+  @@index([userId, createdAt])
+}
+
+model PlacementProblemNote {
+  userId    String   @db.Uuid
+  problemId String   @db.Uuid
+  note      String   @db.VarChar(5000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  @@id([userId, problemId])
+  @@index([userId, updatedAt])
 }
 
 model Subtopic {
@@ -1528,6 +1830,33 @@ model RecruiterInterviewAudit {
   @@index([interviewId, createdAt])
 }
 
+model Offer {
+  id                String      @id @default(uuid()) @db.Uuid
+  applicationId     String      @db.Uuid
+  jobId             String      @db.Uuid
+  studentUserId     String      @db.Uuid
+  createdByUserId   String      @db.Uuid
+  designation       String      @db.VarChar(200)
+  compensation      Json
+  joiningDate       DateTime
+  expiresAt         DateTime
+  status            OfferStatus @default(DRAFT)
+  responseReason    String?
+  sentAt            DateTime?
+  respondedAt       DateTime?
+  application       Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  job               Job         @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  student           User        @relation("OfferStudent", fields: [studentUserId], references: [id], onDelete: Restrict)
+  createdBy         User        @relation("OfferCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  @@index([applicationId, status])
+  @@index([studentUserId, status])
+  @@index([jobId, status])
+  @@index([jobId, status, expiresAt])
+  @@index([jobId, respondedAt])
+}
+
 model InterviewSession {
   id                String              @id @default(uuid()) @db.Uuid
   type              InterviewType
@@ -1573,6 +1902,7 @@ model InterviewQuestion {
   promptVersion     String?
   session           InterviewSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   answers           InterviewAnswer[]
+  evaluations       InterviewEvaluation[]
   @@unique([sessionId, sequence])
 }
 
@@ -1586,11 +1916,13 @@ model InterviewAnswer {
   question          InterviewQuestion   @relation(fields: [questionId], references: [id], onDelete: Cascade)
   participant       User                @relation("InterviewAnswerParticipant", fields: [participantUserId], references: [id], onDelete: Restrict)
   @@index([questionId, submittedAt])
+  @@unique([questionId, participantUserId])
 }
 
 model InterviewEvaluation {
   id                String              @id @default(uuid()) @db.Uuid
   sessionId         String              @db.Uuid
+  questionId        String?             @unique @db.Uuid
   evaluatorUserId   String?             @db.Uuid
   modelAlias        String?
   rubricVersion     String
@@ -1599,6 +1931,7 @@ model InterviewEvaluation {
   evidence          Json
   status            String
   session           InterviewSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question          InterviewQuestion?  @relation(fields: [questionId], references: [id], onDelete: Cascade)
   evaluator         User?               @relation("InterviewEvaluator", fields: [evaluatorUserId], references: [id], onDelete: SetNull)
   createdAt         DateTime            @default(now())
   @@index([sessionId, createdAt])
@@ -1782,6 +2115,7 @@ model AuditLog {
   createdAt         DateTime            @default(now())
   @@index([resourceType, resourceId, createdAt])
   @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
 }
 
 model SecurityEvent {

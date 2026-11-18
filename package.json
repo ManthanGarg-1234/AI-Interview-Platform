@@ -4,38 +4,60 @@
   "version": "1.0.0",
   "description": "CareerPrepAI coding practice API",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "nodemon server/index.js",
-    "worker": "node server/resume-worker.js",
-    "coding-worker": "node server/coding-worker.js",
+    "start": "node backend/index.js",
+    "dev": "nodemon backend/index.js",
+    "worker": "node backend/resume-worker.js",
+    "offer-worker": "node backend/offer-expiry-worker.js",
+    "coding-worker": "node backend/coding-worker.js",
     "build": "npm --prefix frontend run build",
-    "db:seed": "node prisma/seed.js",
-    "test": "node --test server/tests/*.test.js"
+    "db:generate": "prisma generate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:status": "prisma migrate status",
+    "db:seed": "tsx prisma/seed.ts",
+    "validate:links": "tsx scripts/validate-links.ts",
+    "test": "node --test backend/tests/*.test.js",
+    "firebase:emulator": "firebase emulators:start --only auth --project demo-careerprepai",
+    "test:e2e": "node scripts/run-e2e.js",
+    "dev:all": "concurrently -n \"API,RESUME,CODING,OFFER,WEB\" -c \"blue,green,yellow,cyan,magenta\" \"npm run dev\" \"npm run worker\" \"npm run coding-worker\" \"npm run offer-worker\" \"npm --prefix frontend run dev\""
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
+    "argon2": "^0.45.2",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.5.4",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
+    "firebase": "^13.4.0",
+    "firebase-admin": "^14.5.1",
+    "google-auth-library": "^11.3.4",
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.11.0",
     "morgan": "^1.12.1",
     "multer": "^2.5.0",
+    "pdf-parse": "^1.1.1",
     "socket.io": "^4.8.4",
     "zod": "^4.6.7"
   },
-  "prisma": {
-    "seed": "node prisma/seed.js"
-  },
   "devDependencies": {
-    "nodemon": "^3.1.14",
-    "prisma": "^6.19.0"
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
+    "concurrently": "^10.0.7",
+    "firebase-tools": "^15.36.0",
+    "nodemon": "3.1.11",
+    "prisma": "^6.19.0",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "deepmerge-ts": "8.0.2",
+    "effect": "3.20.0"
   }
 }
