@@ -33,7 +33,7 @@ Install only when Phase 0 is approved and the workspace is ready:
 - `pg` if required by the selected Prisma setup
 - `socket.io`
 - `ioredis`, `bullmq`
-- provider-specific email, object storage, AI, and Judge0 clients only after
+- provider-specific email, object storage, AI, and JDoodle integrations only after
   provider selection
 - `supertest` and test database tooling
 
@@ -43,28 +43,23 @@ without an explicit support decision.
 
 ## Missing local tools
 
-Not found: PostgreSQL server/client (`psql`), Redis (`redis-server`), and Docker.
-Recommended development setup is Docker Desktop with PostgreSQL and Redis, or
-approved native installations.
+Not found at the time of this original inventory: PostgreSQL server/client
+(`psql`), Redis (`redis-server`), and Docker. PostgreSQL and Redis may be
+provided by approved native services or managed hosting. Docker is optional;
+JDoodle execution does not require Docker Desktop or a local execution stack.
 
 ## Manual setup required
 
-1. Install Docker Desktop from the approved organizational source, or install
-   PostgreSQL and Redis using approved local packages.
-2. Verify:
-   - `docker --version`
-   - `docker compose version`
-   - `psql --version`
-   - `redis-cli --version`
-3. After the approved dependency manifests exist, run from the repository root:
-   - `npm install`
-   - `docker compose up -d postgres redis`
-   - `npx prisma migrate dev`
-4. Copy `.env.example` to `.env` and set local database/session values.
+1. Provision PostgreSQL and Redis through an approved native or managed service.
+2. Verify `psql --version` and `redis-cli --version` when those clients are
+   available; Docker is not a prerequisite.
+3. Configure the existing `DATABASE_URL` and `REDIS_URL` for those services.
+   JDoodle credentials remain server-side and are not exposed to React.
 
-These commands are intentionally not run yet because dependency manifests and
-Docker Compose configuration have not been created, and the user requested
-approval before substantial changes.
+The preceding setup inventory is historical. The current repository contains
+its manifests and Compose file, but neither Docker nor Compose is required for
+the JDoodle provider. See [JDOODLE_CONFIGURATION.md](./JDOODLE_CONFIGURATION.md)
+for the current execution configuration.
 
 ## External services and credentials requiring user involvement
 
@@ -74,7 +69,7 @@ approval before substantial changes.
   data-processing decision.
 - Email provider credentials and verified sender/domain.
 - Object storage account, bucket, region, private access policy, and lifecycle.
-- Judge0 hosted/self-managed endpoint and optional API key/host.
+- JDoodle Compiler REST API credentials and Java version index.
 - WebRTC signaling deployment and TURN server credentials.
 - Production hosting, DNS, TLS, observability, and secret management.
 - OAuth/GitHub/LeetCode integration credentials only if those integrations are
@@ -84,9 +79,10 @@ Never put these values in source, frontend bundles, Git, or documentation.
 
 ## Approved service decisions
 
-- Local development starts with Docker Compose for PostgreSQL and Redis.
+- PostgreSQL and Redis may be local native services or managed services; Docker
+  Compose is optional.
 - Release 1 uses an external LLM API behind a backend provider abstraction.
-- Release 1 uses Judge0 behind a dedicated code execution adapter.
+- Release 1 uses JDoodle behind the existing code execution adapter and BullMQ worker; Java is enabled first.
 - Release 1 uses SSE for AI streaming and text-only interviews.
 - Voice, WebRTC/TURN, and media storage are Release 2 unless separately
   approved.

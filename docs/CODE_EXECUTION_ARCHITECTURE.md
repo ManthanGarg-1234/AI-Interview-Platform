@@ -2,14 +2,14 @@
 
 ## Release 1 decision
 
-Use Judge0 through a dedicated backend adapter and BullMQ worker boundary.
-Express validates and persists submissions but never executes student code.
-A future self-hosted isolated worker can replace Judge0 behind the same
-`CodeExecutionProvider` contract.
+Use the JDoodle Compiler REST API through a dedicated backend adapter and the
+existing BullMQ worker boundary. Express validates and persists submissions
+but never executes student code. No local execution server, VM, Docker runtime,
+or Judge0 dependency is part of this design.
 
 ## Frontend submission flow
 
-1. Monaco editor keeps source in local React state and optional server draft.
+1. Monaco editor keeps source in React state.
 2. The client sends problem ID, language, source, mode, optional custom input,
    and a cryptographically random idempotency key.
 3. The server returns `202 Accepted` with submission ID and `QUEUED` status.
@@ -17,7 +17,7 @@ A future self-hosted isolated worker can replace Judge0 behind the same
    later for status events.
 5. The client receives bounded public result summaries only.
 
-The browser never receives hidden test input/output, Judge0 credentials,
+The browser never receives hidden test input/output, JDoodle credentials,
 execution policy internals that would weaken protection, or another user's
 submission.
 
@@ -54,33 +54,37 @@ State transitions validate the previous state, write the new state and audit
 event transactionally, and use optimistic version/updated-at checks. A stale
 worker cannot overwrite a completed/cancelled row.
 
-## Judge0 adapter and test evaluation
+## JDoodle adapter and test evaluation
 
-The adapter translates an internal `ExecutionRequest` into Judge0 requests:
-language ID, source, stdin, expected output policy, CPU/time/memory/output
-limits, and network policy. It polls with bounded timeout and maps provider
-responses into an internal response.
+The adapter sends `clientId`, `clientSecret`, Java `script`, `stdin`, and the
+configured Java `versionIndex` to `POST https://api.jdoodle.com/v1/execute`.
+The worker first makes one `compileOnly` request per source; a failed
+`compilationStatus` ends evaluation before paid test executions. A successful
+compile is followed by one paid REST execution per test input. The adapter
+normalizes output, CPU time, memory, compilation failures, runtime failures,
+timeouts, and provider errors into the existing result contract. JDoodle REST
+does not accept the platform's per-problem CPU/memory limits, so the existing
+database fields do not enforce those limits at the provider.
 
 The platform evaluation layer, not the browser, compares output:
 
 1. load public/hidden test references from protected storage;
-2. submit each test with a normalized comparison policy;
+2. submit each needed test with a normalized comparison policy;
 3. normalize only approved line endings/trailing whitespace;
 4. never ignore meaningful tokens or use fuzzy comparison unless the problem
    explicitly declares it;
 5. persist per-test pass/fail without exposing hidden input/output;
 6. derive the first authoritative verdict using the platform mapping.
 
-Hidden tests remain server/provider-side and are never serialized into API
+Hidden tests remain in protected server storage and are never serialized into API
 responses, browser bundles, logs, analytics, or error messages.
 
 ## Language and policy configuration
 
-Each language has a server-owned configuration: platform language ID, compiler/
-runtime image or Judge0 ID, starter format, allowed file type, source-size
-limit, CPU limit, wall-clock limit, memory limit, process limit, output limit,
-network policy, and enabled modes. Release 1 may enable Java first; adding a
-language requires a reviewed adapter/configuration and tests.
+Problem language configurations remain stored for future use, but this release
+allows only Java at the coding and contest API boundary. JDoodle Java is pinned
+to version index `5` (JDK 21.0.0 in the official version list). Adding another
+language requires a reviewed provider mapping and tests.
 
 Proposed engineering defaults require approval and load testing:
 
@@ -94,20 +98,20 @@ Proposed engineering defaults require approval and load testing:
 
 These are platform limits, not legal or provider guarantees.
 
-## Isolation and external Judge0 considerations
+## Isolation, provider data, and credits
 
-Judge0 is an external processor of submitted source, stdin, and execution
-results. The deployment must confirm provider terms, region, retention,
-subprocessor/security posture, transport encryption, credential scope, and
-whether source is retained or used for training. Do not send resumes, identity
-data, or unrelated profile data. Use a short-lived/provider-scoped credential
-where supported and document the data-processing decision before production.
+JDoodle is an external processor of submitted source, stdin, and execution
+results. Confirm provider terms, region, retention, subprocessors/security,
+transport encryption, credential scope, and source-code use before production.
+Do not send resumes, identity data, or unrelated profile data. Client ID and
+secret remain server-side.
 
-Judge0 must disable network access where supported. The platform never trusts
-provider isolation blindly: a self-hosted replacement must use pinned patched
-images, no network namespace, isolated filesystem, dropped privileges,
-resource/process limits, and cleanup. The current local Java runner remains
-development-only and is not an acceptable shared sandbox.
+JDoodle documents isolated execution with no route to the network by default.
+Verify this against the account plan and current provider terms. Each execution
+request consumes one credit; `credit-spent` is free and cached for a bounded
+interval. The free Compiler API plan lists 20 daily credits, resetting at
+23:55 UTC. Worker concurrency defaults to one. Do not retry HTTP 429 or an
+ambiguous execution timeout, since the provider may already have run the code.
 
 ## Failure handling and verdicts
 
@@ -117,21 +121,23 @@ failures are `INTERNAL_ERROR`/`FAILED`, are never represented as a student
 failure, and do not consume an attempt when policy says the platform did not
 execute.
 
-Transient provider/network failures retry with bounded exponential backoff and
-dead-letter after the configured attempts. Compilation/runtime verdicts do not
-retry. Cancellation is best-effort and recorded. A worker crash is recovered by
-lease timeout/reconciliation, not by blindly re-running a completed row.
+Provider failures are infrastructure errors, never student verdicts. HTTP 401
+indicates credentials are rejected; HTTP 429 indicates daily credit exhaustion.
+Do not automatically retry those responses or network timeouts. Compilation
+errors are determined through JDoodle's documented `compileOnly` status;
+runtime and timeout output is normalized separately. BullMQ retains bounded
+retry behavior for non-provider job failures, while completed test summaries
+prevent repeating already completed cases.
 
 ## Persistence, history, and analytics
 
 `CodeSubmission` stores immutable source hash, ownership, problem, language,
 mode, assignment, idempotency key, lifecycle state, verdict, timestamps,
-attempt count, and policy version. `ExecutionResult` stores provider request
-ID, bounded output/error, resource use, per-test summary, and failure code.
+attempt count, and policy version. `ExecutionResult` stores provider name,
+bounded output/error, resource use, per-test summary, and failure code.
 Hidden test content is not stored in these user-visible records.
 
 Submission history is an authorized paginated query. After a successful
 transaction, an outbox event updates coding analytics asynchronously and
 idempotently by submission ID. Analytics failures never alter the authoritative
 verdict.
-

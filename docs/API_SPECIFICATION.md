@@ -9,24 +9,24 @@ errors.
 
 ## Initial resource surface
 
-| Module | Endpoints (planned) | Roles |
-|---|---|---|
-| Auth | `POST /auth/register`, `/login`, `/logout`, `/refresh`, `/verify-email`, `/forgot-password`, `/reset-password`, `GET /auth/me` | Public/current user |
-| Students | `GET/PATCH /students/me`, profile subresources, dashboard, analytics | Student |
-| Recruiters | `GET/PATCH /recruiters/me`, dashboard | Recruiter |
-| Companies | company CRUD, members, verification | Recruiter/Admin |
-| Jobs | list/detail, create/update/publish/pause/close | Public/Recruiter/Admin |
-| Applications | apply, list, detail, stage transitions, notes, decisions | Student/Recruiter/Admin |
-| Coding | problems, submissions, execution result, history | Student/Recruiter/Admin |
-| Assessments | catalogue, create, assign, attempt, autosave, submit, results | All by role |
-| Interviews | configure, schedule, join, questions, answers, evaluation | Student/Recruiter/Admin |
-| Learning | subjects/topics/resources/progress/activity | Student/Admin |
-| Planner | plans/goals/tasks/recommendations/completions | Student |
-| Resumes | upload, versions, analyze, suggestions, approval | Student |
-| AI | conversations/messages/stream, interview evaluation, usage | Student/Admin |
-| Analytics | student, recruiter, admin dashboards and trends | Role-scoped |
-| Notifications | list/read/preferences | Current user |
-| Admin/Security | users, moderation, events, audit, settings | Admin |
+| Module         | Endpoints (planned)                                                                                                            | Roles                   |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------- |
+| Auth           | `POST /auth/register`, `/login`, `/logout`, `/refresh`, `/verify-email`, `/forgot-password`, `/reset-password`, `GET /auth/me` | Public/current user     |
+| Students       | `GET/PATCH /students/me`, profile subresources, dashboard, analytics                                                           | Student                 |
+| Recruiters     | `GET/PATCH /recruiters/me`, dashboard                                                                                          | Recruiter               |
+| Companies      | company CRUD, members, verification                                                                                            | Recruiter/Admin         |
+| Jobs           | list/detail, create/update/publish/pause/close                                                                                 | Public/Recruiter/Admin  |
+| Applications   | apply, list, detail, stage transitions, notes, decisions                                                                       | Student/Recruiter/Admin |
+| Coding         | problems, submissions, execution result, history                                                                               | Student/Recruiter/Admin |
+| Assessments    | catalogue, create, assign, attempt, autosave, submit, results                                                                  | All by role             |
+| Interviews     | configure, schedule, join, questions, answers, evaluation                                                                      | Student/Recruiter/Admin |
+| Learning       | subjects/topics/resources/progress/activity                                                                                    | Student/Admin           |
+| Planner        | plans/goals/tasks/recommendations/completions                                                                                  | Student                 |
+| Resumes        | upload, versions, analyze, suggestions, approval                                                                               | Student                 |
+| AI             | conversations/messages/stream, interview evaluation, usage                                                                     | Student/Admin           |
+| Analytics      | student, recruiter, admin dashboards and trends                                                                                | Role-scoped             |
+| Notifications  | list/read/preferences                                                                                                          | Current user            |
+| Admin/Security | users, moderation, events, audit, settings                                                                                     | Admin                   |
 
 ## Endpoint contract requirements
 
@@ -54,6 +54,7 @@ idempotency requirements where applicable.
   refresh-token rotation, server-side sessions, and CSRF protection.
 - Release 1 AI streaming uses authenticated Server-Sent Events. Socket.IO is
   reserved for future interview presence/signaling.
-- Release 1 coding uses Judge0 through a dedicated adapter and queue boundary.
-  Express never executes untrusted source.
+- Coding uses JDoodle through the existing dedicated adapter and BullMQ worker.
+  Java is the only enabled execution language in this release; Express and the
+  worker host never execute untrusted source locally.
 - Release 1 includes text AI interviews. Voice/video is Release 2.

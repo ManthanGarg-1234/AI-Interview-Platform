@@ -5,23 +5,13 @@ const crypto = require("node:crypto");
 const path = require("node:path");
 const multer = require("multer");
 const { z } = require("zod");
-const Redis = require("ioredis");
-const {
-  register, resendVerification, verifyEmail, requestPasswordReset, resetPassword, changePassword,
-  startGoogleOAuth, completeGoogleOAuth,
-  firebaseGoogleAuth,
-  login, refresh, logout, logoutAll, listSessions, revokeSession,
-  currentCsrfToken, authenticate, requireRole, csrfProtection, publicUser,
-} = require("./auth");
-const { authRateLimit } = require("./middleware/auth-rate-limit");
-const { getPrisma, checkDatabase } = require("./prisma");
-const { expireOffers } = require("./offer-expiry");
+const { register, login, refresh, logout, authenticate, requireRole, csrfProtection, publicUser } = require("./auth");
+const { getPrisma } = require("./prisma");
 const storage = require("./private-storage");
 const { enqueueResumeProcessing } = require("./resume-processing");
-const { enqueueResumeAnalysis, processResumeAnalysis, resumeAnalysisInputSchema } = require("./resume-analysis");
+const { enqueueResumeAnalysis, processResumeAnalysis } = require("./resume-analysis");
 const coding = require("./coding");
-const codingLibrary = require("./coding-library");
-const codingLibraryAdmin = require("./coding-library-admin");
+const codingAdmin = require("./coding-admin");
 const interview = require("./interview");
 const assessment = require("./assessment");
 const performance = require("./performance");
@@ -32,7 +22,9 @@ const recruiterInterviews = require("./recruiter-interviews");
 const jobs = require("./jobs");
 const contests = require("./contests");
 const liveInterviews = require("./live-interviews");
-const llm = require("./llm/provider");
+const subjects = require("./subjects");
+const targetRoles = require("./target-roles");
+const dsaSheets = require("./dsa-sheets");
 
 const router = express.Router();
 const upload = multer({
@@ -41,70 +33,27 @@ const upload = multer({
   fileFilter: (_req, file, callback) => callback(null, ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.mimetype)),
 });
 router.use(express.json({ limit: "256kb" }));
-router.use(csrfProtection);
 router.get("/health", async (_req, res) => {
-  async function checkRedis() {
-    if (!process.env.REDIS_URL) return "not_configured";
-    let redis;
-    try {
-      redis = new Redis(process.env.REDIS_URL, {
-        lazyConnect: true,
-        connectTimeout: 1500,
-        maxRetriesPerRequest: 1,
-        retryStrategy: () => null,
-      });
-      redis.on("error", () => {});
-      await redis.connect();
-      await redis.ping();
-      return "ready";
-    } catch {
-      return "unavailable";
-    } finally {
-      redis?.disconnect();
-    }
+  let database = "not_configured";
+  if (process.env.DATABASE_URL) {
+    try { await getPrisma().$queryRaw`SELECT 1`; database = "ready"; }
+    catch { database = "unavailable"; }
   }
-
-  const [database, redis] = await Promise.all([
-    process.env.DATABASE_URL ? checkDatabase().then(() => "ready", () => "unavailable") : "not_configured",
-    checkRedis(),
-  ]);
-  const ok = database !== "unavailable" && redis !== "unavailable";
-  res.status(ok ? 200 : 503).json({ ok, service: "api", database, redis });
+  const ready = database === "ready";
+  res.status(ready ? 200 : 503).json({ ok: ready, service: "api", database, redis: process.env.REDIS_URL ? "configured" : "not_configured" });
 });
-const authHandler = (handler) => (req, res, next) => Promise.resolve(handler(req, res)).catch(next);
-const registrationLimit = authRateLimit({ name: "register", windowSeconds: 3600, ipLimit: 120, accountLimit: 5 });
-const loginLimit = authRateLimit({ name: "login", windowSeconds: 900, ipLimit: 120, accountLimit: 8 });
-const refreshLimit = authRateLimit({ name: "refresh", windowSeconds: 900, ipLimit: 120, accountLimit: 60, accountSource: "refresh" });
-const verificationLimit = authRateLimit({ name: "verify-email", windowSeconds: 900, ipLimit: 60, accountLimit: 10, accountSource: "token" });
-const resendVerificationLimit = authRateLimit({ name: "resend-verification", windowSeconds: 3600, ipLimit: 30, accountLimit: 3 });
-const passwordResetRequestLimit = authRateLimit({ name: "password-reset-request", windowSeconds: 3600, ipLimit: 30, accountLimit: 5 });
-const passwordResetConfirmLimit = authRateLimit({ name: "password-reset-confirm", windowSeconds: 900, ipLimit: 60, accountLimit: 10, accountSource: "token" });
-const passwordChangeLimit = authRateLimit({ name: "password-change", windowSeconds: 3600, ipLimit: 60, accountLimit: 10, accountSource: "user" });
-const googleOAuthStartLimit = authRateLimit({ name: "google-oauth-start", windowSeconds: 900, ipLimit: 30, accountLimit: 30 });
-
-router.use("/auth", (_req, res, next) => {
-  res.setHeader("Cache-Control", "no-store");
-  next();
+router.post("/auth/register", async (req, res, next) => { try { await register(req, res); } catch (error) { next(error); } });
+router.post("/auth/login", async (req, res, next) => { try { await login(req, res); } catch (error) { next(error); } });
+router.post("/auth/refresh", async (req, res, next) => { try { await refresh(req, res); } catch (error) { next(error); } });
+router.use(csrfProtection);
+router.post("/auth/logout", async (req, res, next) => { try { await logout(req, res); } catch (error) { next(error); } });
+router.get("/auth/me", authenticate, async (req, res, next) => {
+  try {
+    const user = await getPrisma().user.findUnique({ where: { id: req.auth.sub }, include: { studentProfile: true, recruiterProfile: true } });
+    if (!user || user.status !== "ACTIVE") return res.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Your session is no longer active." } });
+    res.json({ data: publicUser(user) });
+  } catch (error) { next(error); }
 });
-router.get("/auth/csrf", authHandler(currentCsrfToken));
-router.post("/auth/register/student", registrationLimit, authHandler((req, res) => register(req, res, "STUDENT")));
-router.post("/auth/register/recruiter", registrationLimit, authHandler((req, res) => register(req, res, "RECRUITER")));
-router.post("/auth/register", registrationLimit, authHandler((req, res) => register(req, res)));
-router.post("/auth/resend-verification", resendVerificationLimit, authHandler(resendVerification));
-router.post("/auth/verify-email", verificationLimit, authHandler(verifyEmail));
-router.post("/auth/password-reset/request", passwordResetRequestLimit, authHandler(requestPasswordReset));
-router.post("/auth/password-reset/confirm", passwordResetConfirmLimit, authHandler(resetPassword));
-router.post("/auth/password/change", authenticate, passwordChangeLimit, authHandler(changePassword));
-router.post("/auth/google/start", googleOAuthStartLimit, authHandler(startGoogleOAuth));
-router.get("/auth/google/callback", authHandler(completeGoogleOAuth));
-router.post("/auth/firebase/google", googleOAuthStartLimit, authHandler(firebaseGoogleAuth));
-router.post("/auth/login", loginLimit, authHandler(login));
-router.post("/auth/refresh", refreshLimit, authHandler(refresh));
-router.post("/auth/logout", authHandler(logout));
-router.post("/auth/logout-all", authenticate, authHandler(logoutAll));
-router.get("/auth/sessions", authenticate, authHandler(listSessions));
-router.delete("/auth/sessions/:sessionId", authenticate, authHandler(revokeSession));
-router.get("/auth/me", authenticate, (req, res) => res.json({ data: publicUser(req.user) }));
 router.get("/me/profile", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try { const profile = await getPrisma().studentProfile.findUnique({ where: { userId: req.auth.sub }, include: { skills: true, educations: true, projects: true } }); res.json({ data: profile }); }
   catch (error) { next(error); }
@@ -115,72 +64,6 @@ router.patch("/me/profile", authenticate, requireRole("STUDENT"), async (req, re
     const data = z.object({ firstName: z.string().trim().min(1).max(100), lastName: z.string().trim().min(1).max(100), phone: z.string().trim().max(32).nullable().optional(), headline: z.string().trim().max(180).nullable().optional(), bio: z.string().trim().max(5000).nullable().optional(), location: z.string().trim().max(160).nullable().optional(), githubUrl: url, linkedinUrl: url, portfolioUrl: url, discoverable: z.boolean().optional() }).parse(req.body);
     const profile = await getPrisma().studentProfile.update({ where: { userId: req.auth.sub }, data });
     res.json({ data: profile });
-  } catch (error) { next(error); }
-});
-router.get("/me/offers", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try {
-    res.json({ data: await getPrisma().offer.findMany({
-      where: { studentUserId: req.auth.sub },
-      include: { job: { include: { company: true } } },
-      orderBy: { createdAt: "desc" },
-    }) });
-  } catch (error) { next(error); }
-});
-router.get("/me/offers/:id", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try {
-    const offer = await getPrisma().offer.findFirst({
-      where: { id: req.params.id, studentUserId: req.auth.sub },
-      include: { job: { include: { company: true } }, application: true },
-    });
-    if (!offer) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Offer not found." } });
-    res.json({ data: offer });
-  } catch (error) { next(error); }
-});
-router.post("/me/offers/:id/respond", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try {
-    const input = z.object({ status: z.enum(["ACCEPTED", "REJECTED"]), reason: z.string().trim().max(1000).optional() }).parse(req.body);
-    const prisma = getPrisma();
-    const offer = await prisma.offer.findFirst({ where: { id: req.params.id, studentUserId: req.auth.sub }, include: { application: { include: { job: true } } } });
-    if (!offer) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Offer not found." } });
-    if (offer.status === input.status) return res.json({ data: offer });
-    if (["ACCEPTED", "REJECTED", "EXPIRED"].includes(offer.status)) return res.status(409).json({ error: { code: "INVALID_OFFER_STATE", message: "This offer has already been resolved." } });
-    if (offer.status !== "SENT") return res.status(409).json({ error: { code: "INVALID_OFFER_STATE", message: "Only sent offers can be responded to." } });
-    if (offer.expiresAt <= new Date()) {
-      await expireOffers();
-      return res.status(409).json({ error: { code: "OFFER_EXPIRED", message: "This offer has expired." } });
-    }
-    const updated = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${req.auth.sub}))`;
-      const current = await tx.offer.findUnique({ where: { id: offer.id } });
-      if (input.status === "ACCEPTED" && current.status !== "ACCEPTED") {
-        const accepted = await tx.offer.findFirst({ where: { studentUserId: req.auth.sub, status: "ACCEPTED", id: { not: offer.id } }, select: { id: true } });
-        if (accepted) {
-          const error = new Error("You have already accepted an offer");
-          error.status = 409;
-          error.code = "OFFER_ALREADY_ACCEPTED";
-          throw error;
-        }
-      }
-      if (current.status === input.status) return current;
-      const result = await tx.offer.updateMany({
-        where: { id: offer.id, studentUserId: req.auth.sub, status: "SENT", expiresAt: { gt: new Date() } },
-        data: { status: input.status, responseReason: input.reason, respondedAt: new Date() },
-      });
-      if (!result.count) {
-        const current = await tx.offer.findUnique({ where: { id: offer.id } });
-        if (current?.status === input.status) return current;
-        const error = new Error(current?.status === "EXPIRED" ? "This offer has expired." : "This offer has already been resolved.");
-        error.status = 409; error.code = current?.status === "EXPIRED" ? "OFFER_EXPIRED" : "INVALID_OFFER_STATE"; throw error;
-      }
-      const nextApplicationStatus = input.status === "ACCEPTED" ? "HIRED" : "REJECTED";
-      await tx.application.update({ where: { id: offer.applicationId }, data: { status: nextApplicationStatus } });
-      await tx.applicationStageHistory.create({ data: { applicationId: offer.applicationId, fromStatus: "OFFER_RELEASED", toStatus: nextApplicationStatus, changedByUserId: req.auth.sub, reason: input.reason || `Candidate ${input.status.toLowerCase()} the offer` } });
-      await tx.auditLog.create({ data: { actorUserId: req.auth.sub, createdByUserId: req.auth.sub, action: `OFFER_${input.status}`, resourceType: "OFFER", resourceId: offer.id, before: { status: "SENT" }, after: { status: input.status, reason: input.reason || null }, requestId: req.requestId || "student-offer-response" } });
-      await tx.notification.create({ data: { userId: offer.createdByUserId, type: "APPLICATION", title: `Offer ${input.status.toLowerCase()}`, body: `The candidate ${input.status.toLowerCase()} the offer for ${offer.application.job.title}.`, resourceType: "OFFER", resourceId: offer.id } });
-      return tx.offer.findUnique({ where: { id: offer.id } });
-    });
-    await recruiter.invalidateRecruiterCache([offer.application.job.companyId]);
-    res.json({ data: updated });
   } catch (error) { next(error); }
 });
 
@@ -271,15 +154,12 @@ router.get("/me/resume-versions/:id/download", authenticate, requireRole("STUDEN
 });
 router.post("/me/resume-analyses", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try {
-    const input = resumeAnalysisInputSchema.parse(req.body);
-    if (!input.targetRole && !input.jobDescription) {
-      return res.status(400).json({ error: { code: "TARGET_REQUIRED", message: "Provide a target role or job description." } });
-    }
+    const input = z.object({ resumeVersionId: z.string().uuid(), targetRole: z.string().trim().min(2).max(200), jobDescription: z.string().trim().max(20_000).nullable().optional() }).parse(req.body);
     const prisma = getPrisma();
     const version = await prisma.resumeVersion.findFirst({ where: { id: input.resumeVersionId, resume: { studentId: await profileId(req.auth.sub), deletedAt: null }, file: { scanStatus: { in: ["CLEAN", "PENDING"] }, deletedAt: null } } });
     if (!version) return res.status(404).json({ error: { code: "VERSION_NOT_FOUND", message: "Resume version is unavailable." } });
     const analysis = await prisma.$transaction(async (tx) => {
-      const created = await tx.resumeAnalysis.create({ data: { resumeVersionId: version.id, targetRole: input.targetRole || "General role", jobDescription: input.jobDescription || null, status: "PENDING", findings: {} } });
+      const created = await tx.resumeAnalysis.create({ data: { resumeVersionId: version.id, targetRole: input.targetRole, jobDescription: input.jobDescription || null, status: "PENDING", findings: {} } });
       await tx.resumeAnalysisJob.create({ data: { analysisId: created.id, status: "PENDING" } });
       return created;
     });
@@ -321,9 +201,8 @@ router.patch("/me/profile-suggestions/:id", authenticate, requireRole("STUDENT")
   } catch (error) { next(error); }
 });
 
-router.get("/coding/sheets", authenticate, requireRole("STUDENT"), coding.listSheets);
-router.put("/coding/sheets/problems/:id/progress", authenticate, requireRole("STUDENT"), coding.updateSheetProgress);
 router.get("/coding/problems", authenticate, requireRole("STUDENT"), coding.listProblems);
+router.get("/coding/execution-health", authenticate, requireRole("STUDENT"), coding.executionHealth);
 router.get("/coding/problems/:id", authenticate, requireRole("STUDENT"), coding.getProblem);
 router.get("/coding/problems/:id/starter-code", authenticate, requireRole("STUDENT"), coding.starterCode);
 router.post("/coding/runs", authenticate, requireRole("STUDENT"), coding.createRun);
@@ -332,25 +211,35 @@ router.post("/coding/submissions", authenticate, requireRole("STUDENT"), coding.
 router.get("/coding/submissions", authenticate, requireRole("STUDENT"), coding.history);
 router.get("/coding/submissions/:id", authenticate, requireRole("STUDENT"), coding.getSubmission);
 router.get("/coding/stats", authenticate, requireRole("STUDENT"), coding.stats);
-router.use("/coding/library", authenticate, requireRole("STUDENT"), codingLibrary.studentRouter);
-router.use("/admin/coding-library", authenticate, requireRole("ADMIN"), codingLibraryAdmin.router);
-router.get("/admin/ai/health", authenticate, requireRole("ADMIN"), async (req, res, next) => {
+
+// Coding topics list
+router.get("/coding/topics", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try {
-    const data = llm.healthInfo();
-    if (String(req.query.probe) === "1") {
-      try {
-        await llm.generateText({
-          system: "Respond with only OK.",
-          messages: [{ role: "user", content: "Reply OK." }],
-          maxTokens: 8,
-        });
-        data.probe = "ok";
-      } catch (error) {
-        data.probe = "unavailable";
-        data.errorCode = error.code || "LLM_UNAVAILABLE";
-      }
-    }
-    res.json({ data });
+    const topics = await getPrisma().topic.findMany({
+      where: { problemTopics: { some: {} } },
+      select: { id: true, name: true, slug: true, _count: { select: { problemTopics: true } } },
+      orderBy: { name: "asc" },
+    });
+    res.json({ data: topics });
+  } catch (error) { next(error); }
+});
+
+// Bookmark a problem
+router.post("/coding/problems/:id/bookmark", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const problem = await getPrisma().codingProblem.findFirst({ where: { id: req.params.id, status: "PUBLISHED" } });
+    if (!problem) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Problem not found." } });
+    const bm = await getPrisma().bookmark.upsert({ where: { userId_problemId: { userId: req.auth.sub, problemId: problem.id } }, update: {}, create: { userId: req.auth.sub, problemId: problem.id } });
+    res.status(201).json({ data: bm });
+  } catch (error) { next(error); }
+});
+router.delete("/coding/problems/:id/bookmark", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try { await getPrisma().bookmark.deleteMany({ where: { userId: req.auth.sub, problemId: req.params.id } }); res.status(204).send(); } catch (error) { next(error); }
+});
+router.get("/coding/bookmarks", authenticate, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const bookmarks = await getPrisma().bookmark.findMany({ where: { userId: req.auth.sub }, include: { problem: { include: { topics: { include: { topic: true } }, languageConfigs: { where: { enabled: true } } } } }, orderBy: { createdAt: "desc" } });
+    res.json({ data: bookmarks.map((b) => ({ ...b.problem, topics: b.problem.topics.map(({ topic }) => topic.name), languages: b.problem.languageConfigs.map(({ language }) => language) })) });
   } catch (error) { next(error); }
 });
 
@@ -360,6 +249,7 @@ router.use("/me/interviews", authenticate, requireRole("STUDENT"), interview);
 router.use("/me/assessments", authenticate, requireRole("STUDENT"), assessment);
 router.use("/me/notifications", authenticate, notifications.router);
 router.use("/me", authenticate, requireRole("STUDENT"), performance);
+router.use("/admin/coding", authenticate, requireRole("ADMIN"), codingAdmin);
 router.use("/admin", authenticate, requireRole("ADMIN"), admin);
 router.use("/admin/contests", authenticate, requireRole("ADMIN"), contests.adminRouter);
 router.use("/organizer/contests", authenticate, requireRole("ADMIN", "RECRUITER"), contests.adminRouter);
@@ -369,5 +259,11 @@ router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), rec
 router.use("/recruiter-interviews", authenticate, requireRole("STUDENT", "RECRUITER"), liveInterviews);
 router.use("/interviews", authenticate, requireRole("STUDENT", "RECRUITER"), liveInterviews);
 router.use("/jobs", authenticate, requireRole("STUDENT"), jobs);
+router.use("/subjects", authenticate, requireRole("STUDENT"), subjects);
+router.use("/admin/learning", authenticate, requireRole("ADMIN"), subjects);
+router.use("/dsa-sheets", authenticate, requireRole("STUDENT"), dsaSheets.studentRouter);
+router.use("/admin/dsa-sheets", authenticate, requireRole("ADMIN"), dsaSheets.adminRouter);
+router.use("/target-roles", authenticate, requireRole("STUDENT"), targetRoles.studentRouter);
+router.use("/admin/target-roles", authenticate, requireRole("ADMIN"), targetRoles.adminRouter);
 
 module.exports = router;

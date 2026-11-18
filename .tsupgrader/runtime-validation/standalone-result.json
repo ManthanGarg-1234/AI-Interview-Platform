@@ -1,0 +1,97 @@
+{
+  "planHash": "1afb701cd0c5d75ea261f73184252a2919dd3c52e2694ebd308624fa7f9df98b",
+  "phase": "standalone",
+  "recordedAtUtc": "2026-11-04T16:28:09.0869031Z",
+  "retryCount": 0,
+  "resetBaseline": false,
+  "complete": true,
+  "result": {
+    "setupSucceeded": true,
+    "setupDurationMs": 0,
+    "setupFailureOutput": null,
+    "assertions": [
+      {
+        "name": "tests-pass",
+        "kind": "process",
+        "verificationMethod": "test-results",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E careerprepai-coding-platform@1.0.0 test\r\n\u003E node --test server/tests/*.test.js\r\n\r\n\u2714 assessment scoring applies exact answers, partial multiple-choice credit, and negative marking (6.943ms)\r\n\u2714 answer normalization makes option ordering deterministic (5.4797ms)\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/auth/me HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022POST /api/v1/auth/register HTTP/1.1\u0022 400 449 \u0022-\u0022 \u0022node\u0022\r\n\u2714 unauthenticated requests are rejected and public admin registration is rejected (344.1715ms)\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022POST /api/v1/auth/logout HTTP/1.1\u0022 403 71 \u0022-\u0022 \u0022node\u0022\r\n\u2714 state-changing requests require CSRF protection (6.6997ms)\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/profile HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/education HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/projects HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/experience HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/certifications HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/skills HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/resumes HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/resume-versions/not-a-real-version/download HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/interviews HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/interviews/dashboard HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/assessments HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/assessments/assignments HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/assessments/attempts HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/notifications HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/me/notifications/preferences HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/subjects/me/progress HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/target-roles/ HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/target-roles/mine HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/admin/dashboard HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/admin/learning/subjects HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/admin/target-roles/ HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/dsa-sheets/ HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/admin/dsa-sheets/import/preview HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n127.0.0.1 - - [04/Nov/2026:16:27:53 \u002B0000] \u0022GET /api/v1/recruiter/dashboard HTTP/1.1\u0022 401 75 \u0022-\u0022 \u0022node\u0022\r\n\u2714 all student profile and resume surfaces reject unauthenticated access (156.781ms)\r\n\u2714 test-case creation validates and stores payloads privately (374.695ms)\r\n\u2714 invalid test cases are rejected before database access (37.5103ms)\r\n\u2714 test-case updates replace private data and remove obsolete storage (57.062ms)\r\n\u2714 function configuration persists trusted templates without exposing them in response (30.394ms)\r\n\u2714 incomplete function configuration is rejected before database access (9.951ms)\r\n\u2714 execution health reports Redis, Judge0, and worker availability separately (171.4477ms)\r\n\u2714 Run API persists a run and queues its existing asynchronous execution (103.7975ms)\r\n\u2714 Run API preserves an explicitly empty custom input (8.4562ms)\r\n\u2714 Run API rejects unsupported function harnesses before creating a run (8.9613ms)\r\n\u2714 Run result endpoint scopes access to its owner and filters hid\n\u2026[truncated]",
+        "durationMs": 6374,
+        "testResults": {
+          "testFramework": "unknown",
+          "runnerDetectedFrom": "none",
+          "testsTotal": 0,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "testsSkipped": 0,
+          "parseFailed": true
+        }
+      },
+      {
+        "name": "frontend-build-passes",
+        "kind": "process",
+        "verificationMethod": "exit-code",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": 0,
+        "outputSample": "\r\n\u003E careerprepai-coding-platform@1.0.0 build\r\n\u003E npm --prefix frontend run build\r\n\r\n\r\n\u003E careerprepai-frontend@1.0.0 build\r\n\u003E vite build\r\n\r\n\u001B[36mvite v7.3.7 \u001B[32mbuilding client environment for production...\u001B[36m\u001B[39m\r\ntransforming...\r\n\u001B[32m\u2713\u001B[39m 1780 modules transformed.\r\nrendering chunks...\r\ncomputing gzip size...\r\n\u001B[2mdist/\u001B[22m\u001B[32mindex.html                 \u001B[39m\u001B[1m\u001B[2m  0.53 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:   0.33 kB\u001B[22m\r\n\u001B[2mdist/\u001B[22m\u001B[35massets/index-CED-z0ro.css  \u001B[39m\u001B[1m\u001B[2m 39.90 kB\u001B[22m\u001B[1m\u001B[22m\u001B[2m \u2502 gzip:   7.82 kB\u001B[22m\r\n\u001B[2mdist/\u001B[22m\u001B[36massets/index-CMPAuXWI.js   \u001B[39m\u001B[1m\u001B[33m621.07 kB\u001B[39m\u001B[22m\u001B[2m \u2502 gzip: 180.69 kB\u001B[22m\r\n\u001B[33m\r\n(!) Some chunks are larger than 500 kB after minification. Consider:\r\n- Using dynamic import() to code-split the application\r\n- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks\r\n- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001B[39m\r\n\u001B[32m\u2713 built in 7.75s\u001B[39m\r\n",
+        "durationMs": 11686
+      },
+      {
+        "name": "api-health-responds",
+        "kind": "http-probe",
+        "verificationMethod": "http-status",
+        "passed": true,
+        "timedOut": false,
+        "skipped": false,
+        "skippedReason": null,
+        "exitCode": null,
+        "outputSample": "HTTP 200\n{\u0022ok\u0022:true,\u0022service\u0022:\u0022api\u0022,\u0022database\u0022:\u0022ready\u0022,\u0022redis\u0022:\u0022configured\u0022}\n--- server output ---\n\r\n\u003E careerprepai-coding-platform@1.0.0 start\r\n\u003E node server/index.js\r\n\r\nCoding API listening on 3000\r\n",
+        "durationMs": 2175
+      }
+    ],
+    "executions": [
+      {
+        "source": "tests-pass",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "test"
+        ],
+        "cwd": "C:\\Users\\hp\\OneDrive\\Desktop\\ai-interview-platform",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "frontend-build-passes",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "run",
+          "build"
+        ],
+        "cwd": "C:\\Users\\hp\\OneDrive\\Desktop\\ai-interview-platform",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      },
+      {
+        "source": "api-health-responds",
+        "resolvedExecutable": "C:\\Program Files\\nodejs\\npm.CMD",
+        "args": [
+          "run",
+          "start"
+        ],
+        "cwd": "C:\\Users\\hp\\OneDrive\\Desktop\\ai-interview-platform",
+        "env": {},
+        "prependPath": [],
+        "platform": "win32"
+      }
+    ]
+  }
+}

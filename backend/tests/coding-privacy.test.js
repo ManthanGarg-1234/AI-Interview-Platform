@@ -2,12 +2,20 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { safeExecutionResult, safeSubmissionHistoryItem } = require("../coding");
+const {
+  safeExecutionResult,
+  safeSubmissionHistoryItem,
+  languages,
+} = require("../coding");
+
+test("coding API enables Java execution only", () => {
+  assert.deepEqual(languages, ["Java"]);
+});
 
 test("student submission serialization exposes safe public feedback only", () => {
   const result = safeExecutionResult({
     id: "result-id",
-    provider: "judge0",
+    provider: "jdoodle",
     passedTests: 1,
     totalTests: 2,
     executionTimeMs: 20,
@@ -18,10 +26,32 @@ test("student submission serialization exposes safe public feedback only", () =>
     compileOutput: "hidden-compile",
     perTestSummary: {
       tests: [
-        { sequence: 1, kind: "PUBLIC", passed: true, verdict: "ACCEPTED", executionTimeMs: 10, memoryKb: 50, input: "public-input", expected: "public-output" },
-        { sequence: 2, kind: "HIDDEN", passed: false, verdict: "WRONG_ANSWER", executionTimeMs: 10, memoryKb: 50, input: "hidden-input", expected: "hidden-output" },
+        {
+          sequence: 1,
+          kind: "PUBLIC",
+          passed: true,
+          verdict: "ACCEPTED",
+          executionTimeMs: 10,
+          memoryKb: 50,
+          input: "public-input",
+          expected: "public-output",
+        },
+        {
+          sequence: 2,
+          kind: "HIDDEN",
+          passed: false,
+          verdict: "WRONG_ANSWER",
+          executionTimeMs: 10,
+          memoryKb: 50,
+          input: "hidden-input",
+          expected: "hidden-output",
+        },
       ],
-      publicFeedback: { stdout: "public-output", stderr: "", compileOutput: "" },
+      publicFeedback: {
+        stdout: "public-output",
+        stderr: "",
+        compileOutput: "",
+      },
     },
     createdAt: new Date("2026-01-01T00:00:00Z"),
   });
@@ -29,22 +59,48 @@ test("student submission serialization exposes safe public feedback only", () =>
   assert.equal(result.stderr, "");
   assert.equal(result.compileOutput, "");
   assert.deepEqual(result.perTestSummary, [
-    { sequence: 1, kind: "PUBLIC", passed: true, verdict: "ACCEPTED", executionTimeMs: 10, memoryKb: 50 },
-    { sequence: 2, kind: "HIDDEN", passed: false, verdict: "WRONG_ANSWER", executionTimeMs: 10, memoryKb: 50 },
+    {
+      sequence: 1,
+      kind: "PUBLIC",
+      passed: true,
+      verdict: "ACCEPTED",
+      executionTimeMs: 10,
+      memoryKb: 50,
+    },
+    {
+      sequence: 2,
+      kind: "HIDDEN",
+      passed: false,
+      verdict: "WRONG_ANSWER",
+      executionTimeMs: 10,
+      memoryKb: 50,
+    },
   ]);
-  assert.doesNotMatch(JSON.stringify(result), /hidden-(input|output|error|compile)/);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /hidden-(input|output|error|compile)/,
+  );
 });
 
 test("student submission serialization does not expose raw output without public feedback", () => {
   const result = safeExecutionResult({
     id: "result-id",
-    provider: "judge0",
+    provider: "jdoodle",
     passedTests: 0,
     totalTests: 1,
     stdout: "raw-hidden-output",
     stderr: "raw-hidden-error",
     compileOutput: "raw-hidden-compile",
-    perTestSummary: { tests: [{ sequence: 1, kind: "HIDDEN", passed: false, verdict: "RUNTIME_ERROR" }] },
+    perTestSummary: {
+      tests: [
+        {
+          sequence: 1,
+          kind: "HIDDEN",
+          passed: false,
+          verdict: "RUNTIME_ERROR",
+        },
+      ],
+    },
   });
 
   test("submission history serialization excludes source and execution output", () => {
@@ -58,7 +114,12 @@ test("student submission serialization does not expose raw output without public
       stderr: "hidden-error",
       createdAt: new Date("2026-01-01T00:00:00Z"),
       completedAt: new Date("2026-01-01T00:00:01Z"),
-      problem: { id: "problem-id", slug: "problem", title: "Problem", difficulty: "Easy" },
+      problem: {
+        id: "problem-id",
+        slug: "problem",
+        title: "Problem",
+        difficulty: "Easy",
+      },
     });
     assert.deepEqual(result, {
       id: "submission-id",
@@ -67,7 +128,12 @@ test("student submission serialization does not expose raw output without public
       verdict: "WRONG_ANSWER",
       createdAt: new Date("2026-01-01T00:00:00Z"),
       completedAt: new Date("2026-01-01T00:00:01Z"),
-      problem: { id: "problem-id", slug: "problem", title: "Problem", difficulty: "Easy" },
+      problem: {
+        id: "problem-id",
+        slug: "problem",
+        title: "Problem",
+        difficulty: "Easy",
+      },
     });
     assert.doesNotMatch(JSON.stringify(result), /secret|hidden/);
   });

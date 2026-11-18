@@ -117,3 +117,13 @@ This approval document was cross-checked against:
 
 The documentation is ready for final user approval. Implementation remains
 blocked until the unresolved external/configuration decisions are confirmed.
+
+## 2026-11-05 Provider Decision Supersession
+
+The earlier Judge0 and Docker-first local-development decisions above are
+historical. The approved Phase 1 execution provider is JDoodle Compiler REST
+API, using the existing Express, BullMQ, Redis, Prisma, and Monaco architecture.
+Only Java is enabled for execution initially. Docker, VirtualBox, Ubuntu VMs,
+local Judge0, local execution servers, and local execution of submitted code
+are not requirements for this provider integration. See
+[JDOODLE_CONFIGURATION.md](./JDOODLE_CONFIGURATION.md) for the current details.

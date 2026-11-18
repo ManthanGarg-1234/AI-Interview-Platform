@@ -64,5 +64,5 @@ the API remains the authority for authorization.
 - AI text streaming: authenticated SSE.
 - Future interview presence/signaling: Socket.IO, separate from AI message
   streaming.
-- Code execution: BullMQ job boundary plus Judge0 adapter; no execution in the
-  Express process.
+- Code execution: BullMQ job boundary plus JDoodle REST adapter; no execution
+  in the Express request process or locally in Node.js.

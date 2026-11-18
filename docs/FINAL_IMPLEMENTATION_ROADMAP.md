@@ -17,12 +17,13 @@ Voice/video and advanced analytics are Release 2.
 
 ## Stage 0: Architecture lock and local infrastructure
 
-**Exit evidence:** approved contracts, Docker Compose design, environment
+**Exit evidence:** approved contracts, PostgreSQL/Redis service design, environment
 template, baseline test report, no production secrets.
 
 - Approve this design package.
 - Select Node LTS baseline for development/CI.
-- Prepare Docker-based PostgreSQL, Redis, and local service configuration.
+- Configure PostgreSQL and Redis through local or managed services; Docker is
+  optional and not required for coding execution.
 - Keep all legacy files intact.
 
 ## Stage 1: Workspace and design system
@@ -59,17 +60,17 @@ application review and admin audit.
 
 ## Stage 4: Coding and assessments
 
-**Exit evidence:** Monaco flow, Judge0 adapter tests, hidden-test protection,
-  assessment autosave/timeout/grading tests.
+**Exit evidence:** Monaco flow, JDoodle adapter/credit tests, Java-only API
+validation, hidden-test protection, and assessment autosave/timeout/grading tests.
 
 - Coding problems, topics, submissions, execution results, and history.
-- Judge0 adapter through queue boundary.
+- JDoodle REST adapter through the existing BullMQ queue boundary.
 - Assessment bank, assignments, attempts, answers, scoring, and reports.
 
 ## Stage 5: AI and interview
 
 **Exit evidence:** provider adapter contract tests, budget/rate-limit tests,
-  authorized-context tests, text interview E2E.
+authorized-context tests, text interview E2E.
 
 - Central AI provider abstraction and prompt versioning.
 - Persistent chatbot with SSE.
@@ -89,12 +90,12 @@ approval tests, recruiter/admin aggregate authorization tests.
 ## Stage 7: Governance and hardening
 
 **Exit evidence:** moderation/security E2E, access-control audit, backup restore,
-  dependency/security scan, focused and full test reports.
+dependency/security scan, focused and full test reports.
 
 - Security monitoring and moderation workflow.
 - Appeals, evidence, audit protection, data access logs.
 - Retention/deletion jobs and consent management.
-- Performance/load tests and Docker deployment path.
+- Performance/load tests and a deployment path that does not require Docker.
 
 ## Stage 8: Release 2
 
@@ -102,7 +103,7 @@ approval tests, recruiter/admin aggregate authorization tests.
 - Voice AI with speech-to-text/text-to-speech.
 - Consent-based recordings.
 - Advanced analytics and recommendation improvements.
-- Self-hosted execution worker replacing Judge0 if required.
+- Additional execution providers only through a separately approved adapter change.
 
 ## Definition of done for every feature
 
@@ -110,4 +111,3 @@ Frontend, API, database persistence, validation, authorization, loading/empty/
 error/success states, audit/consent where relevant, focused tests, integration
 tests, documentation, manual configuration, and known limitations must all be
 reported. No placeholder button or fake provider integration is acceptable.
-
