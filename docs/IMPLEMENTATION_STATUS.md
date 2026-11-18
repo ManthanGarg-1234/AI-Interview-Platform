@@ -141,14 +141,11 @@ until the remaining approval items in
 `FINAL_ARCHITECTURE_APPROVAL.md` are confirmed. This phase produced
 documentation only.
 
-## 2026-11-05 - Phase 1 JDoodle provider integration
 
-- Replaced the Judge0 execution adapter with JDoodle Compiler REST calls while
   retaining Express, BullMQ, Redis, Prisma, CodeRun, ExecutionResult, Monaco,
   Run/Submit, history, progress, and existing function harness configuration.
 - Enabled Java execution only at practice and contest API boundaries. Existing
   non-Java problem/language configuration data remains stored.
-- Pinned Java to JDoodle version index `5` (JDK 21.0.0, per the official
   supported language/version reference). Credentials remain server-side.
 - Added cached daily credit usage, guarded same-process reservations, compile
   preflight, provider error classification, and safe handling of stale legacy

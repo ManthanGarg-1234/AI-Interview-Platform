@@ -38,7 +38,6 @@ Express modular monolith
 - `repositories`: Prisma access and query composition.
 - `schemas`: Zod request/response validation.
 - `jobs`: BullMQ producers/workers for AI, notifications, analytics, execution.
-- `integrations`: AI, email, object storage, JDoodle, WebRTC support.
 - `middleware`: auth, RBAC, rate limit, errors, request IDs, security.
 
 ## Deployment topology
@@ -63,7 +62,6 @@ deployment environment and never shipped to the browser.
   tokens.
 - External LLM through a backend provider abstraction; keys/configuration and
   cost controls remain server-side.
-- JDoodle through the existing BullMQ coding worker and dedicated adapter;
   Java is enabled first and submitted code is not executed locally.
 - Text AI interviews in Release 1; voice/WebRTC video in Release 2.
 - PostgreSQL and Redis may be supplied by local services or managed hosting;

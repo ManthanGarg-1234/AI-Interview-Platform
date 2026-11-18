@@ -25,7 +25,9 @@ npm run db:migrate:dev
 
 The root `.env` supplies the API, Prisma, and local Compose PostgreSQL settings. Set `POSTGRES_PASSWORD` and the password in `DATABASE_URL` to the same local-only value before starting Compose. `frontend/.env` is optional for the Vite proxy default. `backend/.env.example` documents the settings needed when running the API from the `backend` directory. Replace example secrets before exposing any service; do not commit `.env` files.
 
-**Migration history:** four existing migration directories were missing `migration.sql` files in this worktree. The original SQL was restored from Git history after verifying its checksums against the already-applied database records. All migrations are applied and the schema is up to date; no database reset or data deletion was performed.
+**Migration history:** four existing migration directories were missing `migration.sql` files in this worktree. The original SQL was restored from Git history after verifying its checksums against the already-applied database records. The new migration that removes retired student features is destructive and has not been applied; review and apply it intentionally before running the updated application against an existing database.
+
+The student portal retains Coding Practice, preparation sheets, and Resume Analysis. Assessments, AI Mentor, the resource library, and contests have been removed from the application.
 
 ### Run the application
 
@@ -68,7 +70,7 @@ The backend verifies Firebase ID tokens with Firebase Admin and rejects revoked 
 
 ## Architecture
 
-- **Frontend:** React 19, Vite, JavaScript, Tailwind CSS 4, React Router, Axios, TanStack Query, React Hook Form, Zod, Motion, Recharts, Lucide, and Monaco Editor.
+- **Frontend:** React 19, Vite, JavaScript, Tailwind CSS 4, React Router, Axios, TanStack Query, React Hook Form, Zod, Motion, Recharts, and Lucide.
 - **Backend:** Node.js, Express 5, versioned REST API, Socket.IO, environment validation, centralized errors, and request logging.
 - **Persistence:** PostgreSQL and Prisma. The schema and existing migrations are retained; application database credentials are supplied using `DATABASE_URL` and required `POSTGRES_*` Compose variables. Use local-only values and do not commit them.
 - **Infrastructure:** Docker Compose provides PostgreSQL and Redis for local development. Redis is published to `localhost:6380` for the host-run API and workers.

@@ -62,6 +62,21 @@ test("problem identifiers select only the UUID or slug field", () => {
   assert.deepEqual(problemIdentifierWhere("not-a-valid-problem"), { slug: "not-a-valid-problem" });
 });
 
+test("coding practice problem and topic endpoints return their list data", async () => {
+  const headers = { cookie };
+  const [problemsResponse, topicsResponse] = await Promise.all([
+    fetch(`${origin}/api/v1/coding/problems?page=1`, { headers }),
+    fetch(`${origin}/api/v1/coding/topics`, { headers }),
+  ]);
+  assert.equal(problemsResponse.status, 200);
+  assert.equal(topicsResponse.status, 200);
+  const problems = (await problemsResponse.json()).data;
+  const topics = (await topicsResponse.json()).data;
+  assert.ok(Array.isArray(problems.items));
+  assert.ok(Array.isArray(topics));
+  if (topics.length) assert.equal(typeof topics[0]._count.problemTopics, "number");
+});
+
 test("problem detail and starter code resolve by slug and UUID", async () => {
   const headers = { cookie };
   const bySlug = await fetch(`${origin}/api/v1/coding/problems/pair-with-target-sum`, { headers });

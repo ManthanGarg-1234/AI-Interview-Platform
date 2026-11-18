@@ -21,10 +21,10 @@ router.get("/", async (req, res, next) => {
       include: {
         topics: {
           include: {
-            _count: { select: { resources: true, questions: true, problemTopics: true } },
+            _count: { select: { problemTopics: true } },
           },
         },
-        _count: { select: { topics: true, resources: true } },
+        _count: { select: { topics: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -40,7 +40,6 @@ router.get("/me/progress", async (req, res, next) => {
       where: { studentProfileId: pid },
       include: {
         topic: { select: { id: true, name: true, slug: true, subject: { select: { id: true, name: true, slug: true } } } },
-        resource: { select: { id: true, title: true, kind: true } },
       },
       orderBy: { lastActivityAt: "desc" },
     });
@@ -58,12 +57,10 @@ router.get("/:slug", async (req, res, next) => {
         topics: {
           include: {
             subtopics: true,
-            resources: { where: { status: "PUBLISHED" }, orderBy: { title: "asc" } },
-            _count: { select: { questions: true, problemTopics: true } },
+            _count: { select: { problemTopics: true } },
           },
           orderBy: { name: "asc" },
         },
-        resources: { where: { status: "PUBLISHED", topicId: null }, orderBy: { title: "asc" } },
       },
     });
     if (!subject) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Subject not found." } });
@@ -72,14 +69,14 @@ router.get("/:slug", async (req, res, next) => {
     const pid = await profileId(req.auth.sub);
     const progress = await prisma.learningProgress.findMany({
       where: { studentProfileId: pid, topic: { subjectId: subject.id } },
-      select: { topicId: true, resourceId: true, status: true, percent: true, lastActivityAt: true },
+      select: { topicId: true, status: true, percent: true, lastActivityAt: true },
     });
 
     res.json({ data: subject, progress });
   } catch (error) { next(error); }
 });
 
-// ── Topic detail with resources and student progress ─────────────────────────
+// ── Topic detail with linked coding problems and student progress ────────────
 router.get("/:subjectSlug/topics/:topicSlug", async (req, res, next) => {
   try {
     const prisma = getPrisma();
@@ -87,10 +84,7 @@ router.get("/:subjectSlug/topics/:topicSlug", async (req, res, next) => {
       where: { slug: req.params.topicSlug, subject: { slug: req.params.subjectSlug, status: "PUBLISHED" } },
       include: {
         subject: { select: { id: true, name: true, slug: true } },
-        subtopics: { include: { resources: { where: { status: "PUBLISHED" } } } },
-        resources: { where: { status: "PUBLISHED" }, orderBy: { title: "asc" } },
         problemTopics: { include: { problem: { select: { id: true, slug: true, title: true, difficulty: true, status: true } } } },
-        _count: { select: { questions: true } },
       },
     });
     if (!topic) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Topic not found." } });
@@ -98,7 +92,7 @@ router.get("/:subjectSlug/topics/:topicSlug", async (req, res, next) => {
     const pid = await profileId(req.auth.sub);
     const progress = await prisma.learningProgress.findMany({
       where: { studentProfileId: pid, topicId: topic.id },
-      select: { resourceId: true, status: true, percent: true, lastActivityAt: true },
+      select: { status: true, percent: true, lastActivityAt: true },
     });
 
     res.json({
@@ -128,14 +122,14 @@ router.post("/:subjectSlug/topics/:topicSlug/progress", async (req, res, next) =
     const percent = input.status === "COMPLETED" ? 100 : 0;
     const lp = await prisma.$transaction(async (tx) => {
       const current = await tx.learningProgress.findFirst({
-        where: { studentProfileId: pid, topicId: topic.id, resourceId: null },
+        where: { studentProfileId: pid, topicId: topic.id },
         select: { id: true },
       });
       const progressData = { status: input.status, percent, lastActivityAt: new Date() };
       const progress = current
         ? await tx.learningProgress.update({ where: { id: current.id }, data: progressData })
         : await tx.learningProgress.create({
-          data: { studentProfileId: pid, topicId: topic.id, resourceId: null, ...progressData },
+          data: { studentProfileId: pid, topicId: topic.id, ...progressData },
         });
       await tx.studentActivity.create({
         data: { studentProfileId: pid, activityType: "TOPIC_PROGRESS", topicId: topic.id, metadata: { status: input.status } },
@@ -170,21 +164,6 @@ router.post("/subjects/:subjectId/topics", async (req, res, next) => {
     const input = topicSchema.parse(req.body);
     const topic = await getPrisma().topic.create({ data: { ...input, subjectId: req.params.subjectId } });
     res.status(201).json({ data: topic });
-  } catch (error) { next(error); }
-});
-
-// Resource management
-router.post("/topics/:topicId/resources", async (req, res, next) => {
-  try {
-    const input = z.object({
-      title: z.string().trim().min(1).max(240),
-      kind: z.enum(["VIDEO", "ARTICLE", "NOTES", "PRACTICE", "EXTERNAL"]),
-      uri: z.string().url().max(2000).refine((value) => /^https?:\/\//i.test(value), "Resource URLs must use HTTP or HTTPS."),
-      subjectId: z.string().uuid().optional(),
-      status: z.enum(["PUBLISHED", "DRAFT"]).default("PUBLISHED"),
-    }).parse(req.body);
-    const resource = await getPrisma().learningResource.create({ data: { ...input, topicId: req.params.topicId } });
-    res.status(201).json({ data: resource });
   } catch (error) { next(error); }
 });
 

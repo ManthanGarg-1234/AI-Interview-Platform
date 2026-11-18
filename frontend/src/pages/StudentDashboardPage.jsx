@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  BarChart3,
   BookOpen,
   BriefcaseBusiness,
   CalendarCheck,
@@ -8,7 +7,6 @@ import {
   MessageSquare,
   Pencil,
   Target,
-  Trophy,
   Zap,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -50,7 +48,6 @@ function StatCard({ icon: Icon, label, value, sub, loading, color = "indigo" }) 
     </div>
   );
 }
-
 function ProgressBar({ value, max = 100, color = "bg-indigo-600" }) {
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
   return (
@@ -84,10 +81,8 @@ function EmptyState({ icon: Icon, title, description, action, actionLabel }) {
 
 const activityIcons = {
   CODING_SUBMISSION: Code2,
-  ASSESSMENT_ATTEMPT: BarChart3,
   AI_INTERVIEW: MessageSquare,
   TOPIC_VIEWED: BookOpen,
-  RESOURCE_PROGRESS: BookOpen,
 };
 
 function ActivityEntry({ item }) {
@@ -158,26 +153,21 @@ function SubjectCard({ subject }) {
 function buildRecommendations(data) {
   const recs = [];
   if (!data) return recs;
-  const { overview, studyPlan, upcoming } = data;
-
+  const overview = data.overview || {};
+  const studyPlan = data.studyPlan;
   if (overview.codingSolved === 0)
     recs.push({ label: "Solve your first DSA problem", link: "/student/coding", color: "indigo" });
-  else if (overview.codingStreak === 0)
-    recs.push({ label: "Keep your coding streak alive today", link: "/student/coding", color: "amber" });
 
-  if (overview.assessmentsCompleted === 0)
-    recs.push({ label: "Attempt a topic quiz to measure your knowledge", link: "/student/assessments", color: "violet" });
-  else if (overview.avgAssessmentScore != null && overview.avgAssessmentScore < 60)
-    recs.push({ label: "Your assessment average is below 60 — review weak topics", link: "/student/assessments", color: "rose" });
+  if (!data.resume?.count)
+    recs.push({ label: "Add a resume to get started", link: "/student/profile", color: "sky" });
+  else if (data.resume.latestScore == null)
+    recs.push({ label: "Analyze your resume", link: "/student/resume-analysis", color: "sky" });
 
   if (overview.interviewsCompleted === 0)
     recs.push({ label: "Try your first AI mock interview", link: "/student/interviews", color: "emerald" });
 
-  if (!studyPlan)
+  if (!studyPlan?.activePlans)
     recs.push({ label: "Create a personalized study plan", link: "/student/planner", color: "sky" });
-
-  if (upcoming.assessments.length > 0)
-    recs.push({ label: `Complete assigned assessment: ${upcoming.assessments[0].assessment.title}`, link: `/student/assessments/${upcoming.assessments[0].assessment.id}`, color: "amber" });
 
   return recs.slice(0, 4);
 }
@@ -277,13 +267,11 @@ export default function StudentDashboardPage() {
       {/* ── Performance overview ─────────────────────────────────────────── */}
       <section>
         <h2 className="text-lg font-bold text-slate-950 mb-4">Performance overview</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <StatCard icon={Code2} label="Problems solved" value={d?.overview?.codingSolved} loading={loading} color="indigo" />
-          <StatCard icon={Zap} label="Day streak" value={d?.overview?.codingStreak === 0 ? "0" : d?.overview?.codingStreak} loading={loading} color="amber" sub={d?.overview?.codingStreak > 0 ? "Keep it going!" : "Start today"} />
-          <StatCard icon={ClipboardCheck} label="Assessments done" value={d?.overview?.assessmentsCompleted} loading={loading} color="violet" sub={d?.overview?.avgAssessmentScore != null ? `Avg ${d.overview.avgAssessmentScore}%` : null} />
-          <StatCard icon={BarChart3} label="Avg assessment" value={d?.overview?.avgAssessmentScore != null ? `${d.overview.avgAssessmentScore}%` : "—"} loading={loading} color="sky" />
+          <StatCard icon={BriefcaseBusiness} label="Applications" value={d?.overview?.applicationsTotal} loading={loading} color="amber" />
           <StatCard icon={MessageSquare} label="Interviews done" value={d?.overview?.interviewsCompleted} loading={loading} color="emerald" sub={d?.overview?.avgInterviewScore != null ? `Avg ${d.overview.avgInterviewScore}/100` : null} />
-          <StatCard icon={Trophy} label="Submissions" value={d?.overview?.totalSubmissions} loading={loading} color="rose" sub={d?.overview?.acceptedSubmissions != null ? `${d.overview.acceptedSubmissions} accepted` : null} />
+          <StatCard icon={Code2} label="Problems attempted" value={d?.overview?.problemsAttempted} loading={loading} color="rose" />
         </div>
       </section>
 
@@ -310,7 +298,7 @@ export default function StudentDashboardPage() {
                 <EmptyState
                   icon={Zap}
                   title="No activity yet"
-                  description="Complete a coding problem, quiz or interview to see your history here."
+                  description="Complete a coding problem, interview, or study topic to see your history here."
                   action="/student/coding"
                   actionLabel="Start practicing"
                 />
@@ -322,8 +310,8 @@ export default function StudentDashboardPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold text-slate-950">Subject-wise progress</h2>
-              <Link to="/student/resources" className="flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
-                Browse resources <ArrowRight size={14} />
+              <Link to="/student/subjects" className="flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline">
+                Browse subjects <ArrowRight size={14} />
               </Link>
             </div>
             <div className="mt-4">
@@ -339,9 +327,9 @@ export default function StudentDashboardPage() {
                 <EmptyState
                   icon={BookOpen}
                   title="No subjects started"
-                  description="Open learning resources to begin tracking subject progress."
-                  action="/student/resources"
-                  actionLabel="Browse resources"
+                  description="Choose a subject to start tracking your topic progress."
+                  action="/student/subjects"
+                  actionLabel="Browse subjects"
                 />
               )}
             </div>
@@ -355,18 +343,6 @@ export default function StudentDashboardPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-950 mb-4">Continue preparation</h2>
             <div className="space-y-2">
-              {/* In-progress assessment */}
-              {d?.inProgress?.assessment && (
-                <Link
-                  to={`/student/assessments/attempts/${d.inProgress.assessment.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
-                >
-                  <ClipboardCheck size={15} />
-                  Resume: {d.inProgress.assessment.title}
-                  <ArrowRight size={13} className="ml-auto" />
-                </Link>
-              )}
-
               {/* Study plan tasks */}
               {d?.studyPlan?.tasks?.length > 0 && (
                 <Link
@@ -388,11 +364,6 @@ export default function StudentDashboardPage() {
               <Link to="/student/interviews/new" className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                 <MessageSquare size={15} className="text-emerald-500" />
                 Start a mock interview
-                <ArrowRight size={13} className="ml-auto text-slate-400" />
-              </Link>
-              <Link to="/student/assessments" className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                <BarChart3 size={15} className="text-violet-500" />
-                Take a topic quiz
                 <ArrowRight size={13} className="ml-auto text-slate-400" />
               </Link>
             </div>
@@ -441,35 +412,11 @@ export default function StudentDashboardPage() {
                     </p>
                   </div>
                 ))}
-                {d?.upcoming?.assessments?.map((item) => (
-                  <Link key={item.id} to={`/student/assessments/${item.assessment.id}`} className="block rounded-xl border border-amber-200 bg-amber-50 p-3 hover:bg-amber-100 transition-colors">
-                    <div className="flex items-center gap-2">
-                      <ClipboardCheck size={14} className="text-amber-600 shrink-0" />
-                      <p className="text-sm font-semibold text-amber-800 truncate">{item.assessment.title}</p>
-                    </div>
-                    {item.dueAt && (
-                      <p className="mt-1 ml-5 text-xs text-amber-600">
-                        Due {new Date(item.dueAt).toLocaleDateString([], { dateStyle: "medium" })}
-                      </p>
-                    )}
-                  </Link>
-                ))}
-                {d?.upcoming?.contests?.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                    <div className="flex items-center gap-2">
-                      <Trophy size={14} className="text-emerald-600 shrink-0" />
-                      <p className="text-sm font-semibold text-emerald-800 truncate">{item.title}</p>
-                    </div>
-                    <p className="mt-1 ml-5 text-xs text-emerald-600">
-                      {new Date(item.startsAt).toLocaleDateString([], { dateStyle: "medium" })}
-                    </p>
-                  </div>
-                ))}
-                {!loading && !d?.upcoming?.interviews?.length && !d?.upcoming?.assessments?.length && !d?.upcoming?.contests?.length && (
+                {!loading && !d?.upcoming?.interviews?.length && (
                   <EmptyState
                     icon={BriefcaseBusiness}
                     title="Nothing scheduled"
-                    description="Your upcoming interviews, assessments and contests will appear here."
+                    description="Your upcoming interviews will appear here."
                   />
                 )}
               </div>
@@ -478,27 +425,5 @@ export default function StudentDashboardPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-// Re-export ClipboardCheck locally for use in this file
-function ClipboardCheck({ size, className }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-      <path d="m9 14 2 2 4-4" />
-    </svg>
   );
 }

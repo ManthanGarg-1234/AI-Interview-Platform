@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, getApiError } from "../lib/api";
 
-const stages = ["APPLIED", "SCREENING", "SHORTLISTED", "ASSESSMENT", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED", "REJECTED"];
+const stages = ["APPLIED", "SCREENING", "SHORTLISTED", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED", "REJECTED"];
 
 export default function RecruiterApplicationsPage() {
   const [search, setSearch] = useState("");

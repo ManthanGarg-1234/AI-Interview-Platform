@@ -117,14 +117,6 @@ test("readiness reports evidence without counting self-reported skills or projec
     studentProblemProgress: { findMany: async (args) => { queries.push(["coding", args]); return [
       { problem: { title: "Graph traversal", topics: [{ topic: { name: "API design" } }] } },
     ]; } },
-    assessmentAttempt: { findMany: async (args) => { queries.push(["assessments", args]); return [
-      {
-        result: { topicBreakdown: { "topic-1": { correct: 3, total: 4 } } },
-        assignment: { assessment: { questions: [{
-          question: { topicId: "topic-1", topic: { name: "Relational databases", subject: { name: "DBMS" } } },
-        }] } },
-      },
-    ]; } },
   };
 
   const response = await fetch(`${origin}/target-roles/mine/backend/readiness`);
@@ -132,15 +124,15 @@ test("readiness reports evidence without counting self-reported skills or projec
 
   assert.equal(response.status, 200);
   assert.deepEqual(body.data.coverage, {
-    measured: 3,
+    measured: 2,
     total: 4,
-    percent: 75,
-    definition: "Percentage of required skills and core subjects with linked coding, graded-assessment, or verified-skill evidence. It is not a proficiency or hiring prediction.",
+    percent: 50,
+    definition: "Percentage of required skills with linked coding or verified-skill evidence. Core subjects are listed but not measured. This is not a proficiency or hiring prediction.",
   });
   assert.equal(body.data.requiredSkills[0].status, "EVIDENCE_AVAILABLE");
   assert.equal(body.data.requiredSkills[1].status, "EVIDENCE_AVAILABLE");
   assert.equal(body.data.requiredSkills[2].status, "PROFILE_EVIDENCE_ONLY");
-  assert.equal(body.data.coreSubjects[0].accuracy, 75);
+  assert.equal(body.data.coreSubjects[0].status, "NOT_MEASURED");
   assert.deepEqual(body.data.dsa.byTopic, [{ topic: "API design", solved: 1 }]);
   assert.equal(body.data.dsa.status, "REQUIREMENTS_NOT_CONFIGURED");
   assert.match(body.data.evidenceLimits[2], /not a guarantee/);

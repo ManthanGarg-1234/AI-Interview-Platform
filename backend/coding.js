@@ -1,20 +1,8 @@
 "use strict";
 
-const crypto = require("node:crypto");
 const { z } = require("zod");
 const { getPrisma } = require("./prisma");
-const {
-  enqueueCodingRun,
-  enqueueCodingSubmission,
-  diagnoseCodingQueue,
-  assertCodingWorkerAvailable,
-} = require("./coding-queue");
-const {
-  configuration: jdoodleConfiguration,
-  diagnose: diagnoseJDoodle,
-} = require("./jdoodle");
 const { effectiveExecutionMode } = require("./coding-problem-config");
-const { assertFunctionConfiguration } = require("./coding-runner");
 
 const languages = ["Java"];
 const terminalSubmissionStatuses = new Set([
@@ -36,6 +24,9 @@ const listSchema = z.object({
   sort: z.enum(["title", "difficulty"]).default("title"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
+});
+const sheetProgressSchema = z.object({
+  status: z.enum(["NOT_STARTED", "IN_PROGRESS", "COMPLETED"]),
 });
 
 function db() {
@@ -93,33 +84,8 @@ function parseSource(body) {
     .parse(body);
 }
 
-async function executionHealth(_req, res, next) {
-  try {
-    const [queueHealth, jdoodle] = await Promise.all([
-      diagnoseCodingQueue(),
-      diagnoseJDoodle(),
-    ]);
-    const redis = queueHealth.redis;
-    const worker =
-      redis !== "ready"
-        ? "unavailable"
-        : queueHealth.workerCount === null
-          ? "unknown"
-          : queueHealth.workerCount > 0
-            ? "ready"
-            : "unavailable";
-    res.json({
-      data: {
-        ready:
-          redis === "ready" && worker === "ready" && jdoodle.status === "ready",
-        redis,
-        jdoodle,
-        worker,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
+async function executionHealth(_req, res) {
+  res.status(503).json({ data: { ready: false, status: "disabled" } });
 }
 
 async function listProblems(req, res, next) {
@@ -208,6 +174,35 @@ async function listProblems(req, res, next) {
   }
 }
 
+async function listTopics(_req, res, next) {
+  try {
+    const topics = await db().topic.findMany({
+      where: {
+        problemTopics: {
+          some: { problem: { status: "PUBLISHED" } },
+        },
+      },
+      orderBy: { name: "asc" },
+      include: {
+        _count: {
+          select: {
+            problemTopics: { where: { problem: { status: "PUBLISHED" } } },
+          },
+        },
+      },
+    });
+    res.json({
+      data: topics.map(({ id, name, _count }) => ({
+        id,
+        name,
+        _count: { problemTopics: _count.problemTopics },
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getProblem(req, res, next) {
   try {
     const problem = await db().codingProblem.findFirst({
@@ -288,274 +283,12 @@ async function starterCode(req, res, next) {
   }
 }
 
-async function createRun(req, res, next) {
-  try {
-    const input = parseSource(req.body);
-    jdoodleConfiguration();
-    await assertCodingWorkerAvailable();
-    const problem = await db().codingProblem.findFirst({
-      where: {
-        id: input.problemId,
-        status: "PUBLISHED",
-        languageConfigs: { some: { language: input.language, enabled: true } },
-      },
-      select: {
-        id: true,
-        executionMode: true,
-        functionName: true,
-        parameterDefinitions: true,
-        returnType: true,
-        inputSerializationFormat: true,
-        outputSerializationFormat: true,
-        languageConfigs: { where: { language: input.language, enabled: true } },
-      },
-    });
-    if (!problem)
-      return res
-        .status(404)
-        .json({
-          error: {
-            code: "PROBLEM_NOT_AVAILABLE",
-            message: "Problem or language is not available.",
-          },
-        });
-    const languageConfig = problem.languageConfigs.find(
-      (item) => item.language === input.language,
-    );
-    assertFunctionConfiguration(problem, languageConfig);
-    const run = await db().codeRun.create({
-      data: {
-        userId: req.auth.sub,
-        problemId: problem.id,
-        language: input.language,
-        sourceCode: input.sourceCode,
-        customInput: input.customInput ?? null,
-        status: "QUEUED",
-        provider: "jdoodle",
-      },
-    });
-    try {
-      await enqueueCodingRun(run.id);
-    } catch (error) {
-      await db().codeRun.update({
-        where: { id: run.id },
-        data: {
-          status: "FAILED",
-          verdict: "INTERNAL_ERROR",
-          stderr: error.message,
-          completedAt: new Date(),
-        },
-      });
-      return res
-        .status(503)
-        .json({
-          error: {
-            code: error.code || "CODING_QUEUE_UNAVAILABLE",
-            message:
-              "Coding execution is temporarily unavailable. Please try again later.",
-          },
-        });
-    }
-    res
-      .status(202)
-      .json({
-        data: {
-          id: run.id,
-          status: run.status,
-          provider: run.provider,
-          message: "Queued for JDoodle execution.",
-        },
-      });
-  } catch (error) {
-    next(error);
-  }
+async function createRun(_req, res) {
+  res.status(503).json({ error: { code: "CODE_EXECUTION_UNAVAILABLE", message: "Code execution is currently unavailable." } });
 }
 
-async function createSubmission(req, res, next) {
-  try {
-    const input = parseSource(req.body);
-    jdoodleConfiguration();
-    await assertCodingWorkerAvailable();
-    const prisma = db();
-    const problem = await prisma.codingProblem.findFirst({
-      where: {
-        id: input.problemId,
-        status: "PUBLISHED",
-        languageConfigs: { some: { language: input.language, enabled: true } },
-      },
-      select: {
-        id: true,
-        executionMode: true,
-        functionName: true,
-        className: true,
-        parameterDefinitions: true,
-        returnType: true,
-        inputSerializationFormat: true,
-        outputSerializationFormat: true,
-        languageConfigs: { where: { language: input.language, enabled: true } },
-      },
-    });
-    if (!problem)
-      return res
-        .status(404)
-        .json({
-          error: {
-            code: "PROBLEM_NOT_AVAILABLE",
-            message: "Problem or language is not available.",
-          },
-        });
-    assertFunctionConfiguration(problem, problem.languageConfigs[0]);
-    const sourceHash = crypto
-      .createHash("sha256")
-      .update(input.sourceCode)
-      .digest("hex");
-    let submission;
-    try {
-      submission = await prisma.$transaction(async (tx) => {
-        if (input.idempotencyKey) {
-          const existing = await tx.codeSubmission.findUnique({
-            where: {
-              userId_idempotencyKey: {
-                userId: req.auth.sub,
-                idempotencyKey: input.idempotencyKey,
-              },
-            },
-          });
-          if (existing) {
-            if (
-              existing.sourceHash !== sourceHash ||
-              existing.problemId !== problem.id ||
-              existing.language !== input.language
-            ) {
-              throw Object.assign(
-                new Error(
-                  "This idempotency key was already used for a different submission.",
-                ),
-                { status: 409, code: "IDEMPOTENCY_KEY_REUSED" },
-              );
-            }
-            return existing;
-          }
-        }
-        const created = await tx.codeSubmission.create({
-          data: {
-            userId: req.auth.sub,
-            problemId: problem.id,
-            type: "PRACTICE",
-            language: input.language,
-            sourceCode: input.sourceCode,
-            sourceHash,
-            idempotencyKey: input.idempotencyKey || null,
-            status: "QUEUED",
-            policyVersion: "phase4-v1",
-            queuedAt: new Date(),
-          },
-        });
-        await tx.submissionStatusHistory.create({
-          data: { submissionId: created.id, toStatus: "QUEUED" },
-        });
-        await tx.studentProblemProgress.upsert({
-          where: {
-            userId_problemId: { userId: req.auth.sub, problemId: problem.id },
-          },
-          create: {
-            userId: req.auth.sub,
-            problemId: problem.id,
-            status: "ATTEMPTED",
-            attempts: 1,
-            lastSubmittedAt: new Date(),
-          },
-          update: {
-            status: "ATTEMPTED",
-            attempts: { increment: 1 },
-            lastSubmittedAt: new Date(),
-          },
-        });
-        return created;
-      });
-    } catch (error) {
-      if (!input.idempotencyKey || error.code !== "P2002") throw error;
-      submission = await prisma.codeSubmission.findUnique({
-        where: {
-          userId_idempotencyKey: {
-            userId: req.auth.sub,
-            idempotencyKey: input.idempotencyKey,
-          },
-        },
-      });
-      if (
-        !submission ||
-        submission.sourceHash !== sourceHash ||
-        submission.problemId !== problem.id ||
-        submission.language !== input.language
-      ) {
-        throw Object.assign(
-          new Error(
-            "This idempotency key was already used for a different submission.",
-          ),
-          { status: 409, code: "IDEMPOTENCY_KEY_REUSED" },
-        );
-      }
-    }
-    if (!terminalSubmissionStatuses.has(submission.status)) {
-      try {
-        await enqueueCodingSubmission(submission.id);
-      } catch (error) {
-        await prisma.$transaction(async (tx) => {
-          const changed = await tx.codeSubmission.updateMany({
-            where: {
-              id: submission.id,
-              status: { notIn: [...terminalSubmissionStatuses] },
-            },
-            data: {
-              status: "SYSTEM_ERROR",
-              verdict: "SYSTEM_ERROR",
-              completedAt: new Date(),
-            },
-          });
-          if (!changed.count) return;
-          await tx.executionResult.create({
-            data: {
-              submissionId: submission.id,
-              provider: "jdoodle",
-              passedTests: 0,
-              totalTests: 0,
-              failureCode: "CODING_QUEUE_UNAVAILABLE",
-              perTestSummary: { tests: [], score: 0 },
-            },
-          });
-          await tx.submissionStatusHistory.create({
-            data: {
-              submissionId: submission.id,
-              fromStatus: submission.status,
-              toStatus: "SYSTEM_ERROR",
-              note: "Coding execution queue unavailable.",
-            },
-          });
-        });
-        return res
-          .status(503)
-          .json({
-            error: {
-              code: error.code || "CODING_QUEUE_UNAVAILABLE",
-              message:
-                "Coding execution is temporarily unavailable. Please try again later.",
-            },
-          });
-      }
-    }
-    res
-      .status(202)
-      .json({
-        data: {
-          id: submission.id,
-          status: submission.status,
-          verdict: submission.verdict,
-        },
-      });
-  } catch (error) {
-    next(error);
-  }
+async function createSubmission(_req, res) {
+  res.status(503).json({ error: { code: "CODE_EXECUTION_UNAVAILABLE", message: "Code execution is currently unavailable." } });
 }
 
 async function getRun(req, res, next) {
@@ -578,7 +311,6 @@ const runSelect = {
   id: true,
   status: true,
   verdict: true,
-  provider: true,
   executionTimeMs: true,
   memoryKb: true,
   stdout: true,
@@ -831,9 +563,156 @@ async function stats(req, res, next) {
   }
 }
 
+async function listSheets(req, res, next) {
+  try {
+    const sheets = await db().sheet.findMany({
+      where: { subject: { status: "PUBLISHED" } },
+      orderBy: { name: "asc" },
+      include: {
+        subject: {
+          include: {
+            topics: {
+              orderBy: { name: "asc" },
+              include: {
+                sheetProblems: {
+                  orderBy: { title: "asc" },
+                  include: {
+                    progress: {
+                      where: { userId: req.auth.sub },
+                      select: { status: true, completedAt: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const items = sheets.map((sheet) => ({
+      id: sheet.id,
+      name: sheet.name,
+      description: sheet.description,
+      source: sheet.source,
+      topics: sheet.subject.topics.map((topic) => ({
+        id: topic.id,
+        name: topic.name,
+        problems: topic.sheetProblems.map((problem) => {
+          const storedStatus = problem.progress[0]?.status;
+          return {
+            id: problem.id,
+            title: problem.title,
+            difficulty: problem.difficulty,
+            platform: problem.platform,
+            url: problem.url,
+            status:
+              ({
+                SOLVED: "COMPLETED",
+                ATTEMPTED: "IN_PROGRESS",
+                REVISION_REQUIRED: "IN_PROGRESS",
+              })[storedStatus] || storedStatus || "NOT_STARTED",
+            completedAt: problem.progress[0]?.completedAt || null,
+          };
+        }),
+      })),
+    }));
+    const problems = items.flatMap((sheet) =>
+      sheet.topics.flatMap((topic) => topic.problems),
+    );
+    res.json({
+      data: {
+        items,
+        stats: {
+          total: problems.length,
+          completed: problems.filter((problem) => problem.status === "COMPLETED").length,
+          inProgress: problems.filter((problem) => problem.status === "IN_PROGRESS").length,
+          notStarted: problems.filter((problem) => problem.status === "NOT_STARTED").length,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateSheetProgress(req, res, next) {
+  try {
+    const input = sheetProgressSchema.parse(req.body);
+    const status = {
+      NOT_STARTED: "NOT_STARTED",
+      IN_PROGRESS: "ATTEMPTED",
+      COMPLETED: "SOLVED",
+    }[input.status];
+    const problem = await db().problem.findFirst({
+      where: {
+        id: req.params.id,
+        topic: { subject: { status: "PUBLISHED", sheet: { isNot: null } } },
+      },
+      select: { id: true, topicId: true },
+    });
+    if (!problem) {
+      return res.status(404).json({
+        error: {
+          code: "NOT_FOUND",
+          message: "Placement-sheet problem not found.",
+        },
+      });
+    }
+    const progress = await db().$transaction(async (tx) => {
+      const where = {
+        userId_problemId: { userId: req.auth.sub, problemId: problem.id },
+      };
+      const previous = await tx.sheetProblemProgress.findUnique({ where });
+      if (previous?.status === status) return { ...previous, status: input.status };
+      const enteringAttempted =
+        ["ATTEMPTED", "SOLVED"].includes(status) &&
+        !["ATTEMPTED", "SOLVED", "REVISION_REQUIRED"].includes(previous?.status);
+      const now = new Date();
+      const updated = await tx.sheetProblemProgress.upsert({
+        where,
+        create: {
+          userId: req.auth.sub,
+          problemId: problem.id,
+          status,
+          attempts: enteringAttempted ? 1 : 0,
+          solvedAt: status === "SOLVED" ? now : null,
+          completedAt: status === "SOLVED" ? now : null,
+        },
+        update: {
+          status,
+          attempts: enteringAttempted ? { increment: 1 } : undefined,
+          solvedAt: status === "SOLVED" ? previous?.solvedAt || now : previous?.solvedAt,
+          completedAt:
+            status === "SOLVED" ? previous?.completedAt || now : previous?.completedAt,
+        },
+      });
+      const profile = await tx.studentProfile.findUnique({
+        where: { userId: req.auth.sub },
+        select: { id: true },
+      });
+      if (profile) {
+        await tx.studentActivity.create({
+          data: {
+            studentProfileId: profile.id,
+            activityType: "CODING_SHEET_PROGRESS",
+            topicId: problem.topicId,
+            sourceId: problem.id,
+            metadata: { status: input.status },
+          },
+        });
+      }
+      return { ...updated, status: input.status };
+    });
+    res.json({ data: progress });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   executionHealth,
   listProblems,
+  listTopics,
   getProblem,
   starterCode,
   createRun,
@@ -842,6 +721,8 @@ module.exports = {
   getSubmission,
   history,
   stats,
+  listSheets,
+  updateSheetProgress,
   languages,
   problemIdentifierWhere,
   safeExecutionResult,

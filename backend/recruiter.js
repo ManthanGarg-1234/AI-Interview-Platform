@@ -108,23 +108,6 @@ const jobInput = z.object({
     preferredSkills: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
   }).optional(),
 });
-const assessmentInput = z.object({
-  companyId: z.string().uuid(),
-  title: z.string().trim().min(2).max(240),
-  type: z.enum(["TECHNICAL", "APTITUDE", "CODING", "SQL", "SUBJECT", "PRACTICE", "RECRUITER"]),
-  durationSeconds: z.coerce.number().int().min(60).max(86_400),
-  negativeMarking: z.coerce.number().min(0).max(100).default(0),
-  maxAttempts: z.coerce.number().int().min(1).max(10).default(1),
-  questionIds: z.array(z.string().uuid()).max(200).default([]),
-  codingProblemIds: z.array(z.string().uuid()).max(50).default([]),
-});
-const assignmentInput = z.object({
-  studentUserId: z.string().uuid(),
-  applicationId: z.string().uuid().optional(),
-  jobId: z.string().uuid().optional(),
-  startsAt: z.coerce.date().nullable().optional(),
-  dueAt: z.coerce.date().nullable().optional(),
-});
 async function jobAccess(userId, jobId, roles = ["OWNER", "HIRING_MANAGER", "REVIEWER"]) {
   const job = await getPrisma().job.findUnique({ where: { id: jobId }, include: { company: true } });
   if (!job) return null;
@@ -266,7 +249,6 @@ router.get("/applications/:id", async (req, res, next) => {
         resume: { include: { activeVersion: { include: { file: true } } } },
         stageHistory: { orderBy: { createdAt: "desc" } },
         notes: { orderBy: { createdAt: "desc" } },
-        assessmentAssignments: { include: { assessment: true, attempts: { include: { result: true } } } },
         recruiterInterviews: { include: { rounds: true, scorecards: true } },
         offers: { orderBy: { createdAt: "desc" } },
       },
@@ -323,10 +305,10 @@ router.get("/candidates", async (req, res, next) => {
 });
 router.patch("/applications/:id/status", async (req, res, next) => {
   try {
-    const input = z.object({ status: z.enum(["SCREENING", "SHORTLISTED", "ASSESSMENT", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED", "REJECTED"]), reason: z.string().max(1000).optional() }).parse(req.body);
+    const input = z.object({ status: z.enum(["SCREENING", "SHORTLISTED", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED", "REJECTED"]), reason: z.string().max(1000).optional() }).parse(req.body);
     const application = await getPrisma().application.findUnique({ where: { id: req.params.id }, include: { job: true } }); const access = application && await jobAccess(req.auth.sub, application.jobId);
     if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Application not found." } });
-    const transitions = { APPLIED: ["SCREENING", "REJECTED"], SCREENING: ["SHORTLISTED", "REJECTED"], SHORTLISTED: ["ASSESSMENT", "TECHNICAL_INTERVIEW", "REJECTED"], ASSESSMENT: ["TECHNICAL_INTERVIEW", "REJECTED"], TECHNICAL_INTERVIEW: ["HR_INTERVIEW", "SELECTED", "REJECTED"], HR_INTERVIEW: ["SELECTED", "OFFER_RELEASED", "REJECTED"], SELECTED: ["OFFER_RELEASED", "REJECTED"], OFFER_RELEASED: ["HIRED", "REJECTED"], HIRED: [], REJECTED: [] };
+    const transitions = { APPLIED: ["SCREENING", "REJECTED"], SCREENING: ["SHORTLISTED", "REJECTED"], SHORTLISTED: ["TECHNICAL_INTERVIEW", "REJECTED"], TECHNICAL_INTERVIEW: ["HR_INTERVIEW", "SELECTED", "REJECTED"], HR_INTERVIEW: ["SELECTED", "OFFER_RELEASED", "REJECTED"], SELECTED: ["OFFER_RELEASED", "REJECTED"], OFFER_RELEASED: ["HIRED", "REJECTED"], HIRED: [], REJECTED: [] };
     if (!transitions[application.status]?.includes(input.status)) return res.status(409).json({ error: { code: "INVALID_TRANSITION", message: `Cannot move an application from ${application.status} to ${input.status}.` } });
     if (input.status === "HIRED") {
       const acceptedOffer = await getPrisma().offer.findFirst({ where: { applicationId: application.id, studentUserId: application.studentUserId, status: "ACCEPTED" } });
@@ -367,7 +349,6 @@ router.post("/applications/compare", async (req, res, next) => {
       include: {
         job: { include: { skills: { include: { skill: true } } } },
         student: { include: { studentProfile: { include: { skills: { include: { skill: true } }, educations: true, experiences: true } } } },
-        assessmentAssignments: { include: { attempts: { include: { result: true } } } },
       },
     });
     const accessible = [];
@@ -447,154 +428,6 @@ router.post("/offers/:id/:action", async (req, res, next) => {
     await createNotification({ userId: offer.studentUserId, type: "APPLICATION", title: action === "send" ? "Offer received" : "Offer updated", body: action === "send" ? `A job offer for ${offer.application.job.title} is available.` : `The status of your offer has changed to ${nextStatus.toLowerCase()}.`, resourceType: "OFFER", resourceId: offer.id }).catch(() => null);
     await invalidateRecruiterCache([offer.application.job.companyId]);
     res.json({ data: updated });
-  } catch (error) { next(error); }
-});
-
-async function assessmentAccess(userId, assessmentId, roles = ["OWNER", "HIRING_MANAGER", "REVIEWER"]) {
-  const assessment = await getPrisma().assessment.findUnique({ where: { id: assessmentId }, include: { ownerCompany: true } });
-  if (!assessment?.ownerCompanyId) return null;
-  const access = await member(userId, assessment.ownerCompanyId);
-  return isAuthorizedCompanyMember(access, assessment.ownerCompanyId, roles) ? { assessment, access } : null;
-}
-
-function assessmentView(assessment) {
-  return {
-    id: assessment.id, companyId: assessment.ownerCompanyId, title: assessment.title, type: assessment.type,
-    status: assessment.status, durationSeconds: assessment.durationSeconds, negativeMarking: Number(assessment.negativeMarking),
-    maxAttempts: assessment.maxAttempts, publishedAt: assessment.publishedAt,
-    questionCount: assessment.questions?.length || 0, codingProblemCount: assessment.codingProblems?.length || 0,
-  };
-}
-
-router.get("/assessments", async (req, res, next) => {
-  try {
-    const companies = await getPrisma().company.findMany({ where: { members: { some: { userId: req.auth.sub, active: true, role: { in: ["OWNER", "HIRING_MANAGER", "REVIEWER"] } } } }, select: { id: true } });
-    const items = await getPrisma().assessment.findMany({
-      where: { ownerCompanyId: { in: companies.map((item) => item.id) } },
-      include: { questions: true, codingProblems: true }, orderBy: { updatedAt: "desc" },
-    });
-    res.json({ data: items.map(assessmentView) });
-  } catch (error) { next(error); }
-});
-
-router.post("/assessments", async (req, res, next) => {
-  try {
-    const input = assessmentInput.parse(req.body);
-    const access = await member(req.auth.sub, input.companyId);
-    if (!isAuthorizedCompanyMember(access, input.companyId, ["OWNER", "HIRING_MANAGER"])) return res.status(403).json({ error: { code: "FORBIDDEN", message: "Hiring manager access is required." } });
-    const { questionIds, codingProblemIds, companyId, ...data } = input;
-    const prisma = getPrisma();
-    const [questions, problems] = await Promise.all([
-      prisma.question.findMany({ where: { id: { in: questionIds } }, select: { id: true } }),
-      prisma.codingProblem.findMany({ where: { id: { in: codingProblemIds }, status: { in: ["PUBLISHED", "ACTIVE"] } }, select: { id: true } }),
-    ]);
-    if (questions.length !== questionIds.length || problems.length !== codingProblemIds.length) return res.status(400).json({ error: { code: "INVALID_CONTENT", message: "One or more selected questions or coding problems are unavailable." } });
-    const assessment = await prisma.assessment.create({
-      data: { ...data, ownerCompanyId: companyId, createdByUserId: req.auth.sub,
-        questions: { create: questionIds.map((questionId, sequence) => ({ questionId, sequence, points: 1 })) },
-        codingProblems: { create: codingProblemIds.map((problemId, sequence) => ({ problemId, sequence, points: 1 })) } },
-      include: { questions: true, codingProblems: true },
-    });
-    res.status(201).json({ data: assessmentView(assessment) });
-  } catch (error) { next(error); }
-});
-
-router.patch("/assessments/:id", async (req, res, next) => {
-  try {
-    const access = await assessmentAccess(req.auth.sub, req.params.id, ["OWNER", "HIRING_MANAGER"]);
-    if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Assessment not found." } });
-    if (access.assessment.status !== "DRAFT") return res.status(409).json({ error: { code: "ASSESSMENT_LOCKED", message: "Only draft assessments can be edited." } });
-    const input = assessmentInput.partial().omit({ companyId: true }).parse(req.body);
-    const { questionIds, codingProblemIds, ...data } = input;
-    const prisma = getPrisma();
-    await prisma.$transaction(async (tx) => {
-      await tx.assessment.update({ where: { id: access.assessment.id }, data });
-      if (questionIds) {
-        await tx.assessmentQuestion.deleteMany({ where: { assessmentId: access.assessment.id } });
-        await tx.assessmentQuestion.createMany({ data: questionIds.map((questionId, sequence) => ({ assessmentId: access.assessment.id, questionId, sequence, points: 1 })) });
-      }
-      if (codingProblemIds) {
-        await tx.assessmentCodingProblem.deleteMany({ where: { assessmentId: access.assessment.id } });
-        await tx.assessmentCodingProblem.createMany({ data: codingProblemIds.map((problemId, sequence) => ({ assessmentId: access.assessment.id, problemId, sequence, points: 1 })) });
-      }
-    });
-    const updated = await prisma.assessment.findUnique({ where: { id: access.assessment.id }, include: { questions: true, codingProblems: true } });
-    res.json({ data: assessmentView(updated) });
-  } catch (error) { next(error); }
-});
-
-router.post("/assessments/:id/status/:action", async (req, res, next) => {
-  try {
-    const access = await assessmentAccess(req.auth.sub, req.params.id, ["OWNER", "HIRING_MANAGER"]);
-    if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Assessment not found." } });
-    const action = req.params.action;
-    if (action === "publish") {
-      if (access.assessment.status !== "DRAFT") return res.status(409).json({ error: { code: "INVALID_STATE", message: "Only draft assessments can be published." } });
-      const count = await getPrisma().assessmentQuestion.count({ where: { assessmentId: access.assessment.id } });
-      const codingCount = await getPrisma().assessmentCodingProblem.count({ where: { assessmentId: access.assessment.id } });
-      if (!count && !codingCount) return res.status(409).json({ error: { code: "EMPTY_ASSESSMENT", message: "Add at least one question or coding problem." } });
-      const updated = await getPrisma().assessment.update({ where: { id: access.assessment.id }, data: { status: "PUBLISHED", publishedAt: new Date() } });
-      return res.json({ data: assessmentView(updated) });
-    }
-    if (action === "deactivate") {
-      const updated = await getPrisma().assessment.update({ where: { id: access.assessment.id }, data: { status: "PAUSED" } });
-      return res.json({ data: assessmentView(updated) });
-    }
-    return res.status(404).json({ error: { code: "NOT_FOUND", message: "Unknown assessment action." } });
-  } catch (error) { next(error); }
-});
-
-router.get("/assessments/:id/content", async (req, res, next) => {
-  try {
-    const access = await assessmentAccess(req.auth.sub, req.params.id);
-    if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Assessment not found." } });
-    const [questions, codingProblems] = await Promise.all([
-      getPrisma().question.findMany({ select: { id: true, body: true, type: true, difficulty: true, options: true }, take: 200 }),
-      getPrisma().codingProblem.findMany({ where: { status: { in: ["PUBLISHED", "ACTIVE"] } }, select: { id: true, title: true, difficulty: true }, take: 100 }),
-    ]);
-    res.json({ data: { questions, codingProblems } });
-  } catch (error) { next(error); }
-});
-
-router.post("/assessments/:id/assignments", async (req, res, next) => {
-  try {
-    const input = assignmentInput.parse(req.body);
-    const access = await assessmentAccess(req.auth.sub, req.params.id, ["OWNER", "HIRING_MANAGER"]);
-    if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Assessment not found." } });
-    if (access.assessment.status !== "PUBLISHED") return res.status(409).json({ error: { code: "ASSESSMENT_NOT_PUBLISHED", message: "Publish the assessment before assigning it." } });
-    const prisma = getPrisma();
-    const student = await prisma.user.findFirst({ where: { id: input.studentUserId, role: "STUDENT", status: "ACTIVE" }, select: { id: true } });
-    if (!student) return res.status(400).json({ error: { code: "INELIGIBLE_APPLICANT", message: "Only active student applicants can be assigned." } });
-    let application = null;
-    if (input.applicationId) application = await prisma.application.findUnique({ where: { id: input.applicationId }, include: { job: true } });
-    const jobId = input.jobId || application?.jobId;
-    const job = jobId && await prisma.job.findUnique({ where: { id: jobId } });
-    if (!job || job.companyId !== access.assessment.ownerCompanyId || job.status === "ARCHIVED" || job.status === "CLOSED") return res.status(400).json({ error: { code: "INELIGIBLE_APPLICANT", message: "The job is not owned by this company or is closed." } });
-    if (!application || application.studentUserId !== student.id || application.jobId !== job.id || ["REJECTED", "WITHDRAWN"].includes(application.status)) return res.status(400).json({ error: { code: "INELIGIBLE_APPLICANT", message: "Only eligible applicants for the selected job may be assigned." } });
-    const assignment = await prisma.assessmentAssignment.create({ data: { assessmentId: access.assessment.id, studentUserId: student.id, assignedByUserId: req.auth.sub, jobId: job.id, applicationId: application.id, startsAt: input.startsAt, dueAt: input.dueAt } });
-    await createNotification({ userId: student.id, type: "ASSESSMENT", title: "New assessment invitation", body: `You have been invited to complete ${access.assessment.title}.`, resourceType: "ASSESSMENT", resourceId: access.assessment.id }).catch(() => null);
-    res.status(201).json({ data: assignment });
-  } catch (error) { next(error); }
-});
-
-router.get("/assessments/:id/reviews", async (req, res, next) => {
-  try {
-    const access = await assessmentAccess(req.auth.sub, req.params.id);
-    if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Assessment not found." } });
-    const assignments = await getPrisma().assessmentAssignment.findMany({ where: { assessmentId: access.assessment.id }, include: { student: { select: { id: true, studentProfile: { select: { firstName: true, lastName: true } } } }, attempts: { where: { status: { in: ["SUBMITTED", "GRADED", "EXPIRED"] } }, orderBy: { attemptNumber: "desc" }, take: 1, include: { result: true, reviews: true } } } });
-    res.json({ data: assignments.map((item) => ({ assignmentId: item.id, student: item.student, status: item.status, attempt: item.attempts[0] ? { id: item.attempts[0].id, status: item.attempts[0].status, score: item.attempts[0].score, result: item.attempts[0].result, review: item.attempts[0].reviews[0] || null } : null })) });
-  } catch (error) { next(error); }
-});
-
-router.put("/assessments/:id/attempts/:attemptId/review", async (req, res, next) => {
-  try {
-    const input = z.object({ rating: z.coerce.number().int().min(1).max(5).nullable().optional(), note: z.string().trim().max(5000).nullable().optional() }).parse(req.body);
-    const access = await assessmentAccess(req.auth.sub, req.params.id);
-    if (!access) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Assessment not found." } });
-    const attempt = await getPrisma().assessmentAttempt.findFirst({ where: { id: req.params.attemptId, assignment: { assessmentId: access.assessment.id }, status: { in: ["SUBMITTED", "GRADED", "EXPIRED"] } } });
-    if (!attempt) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Completed attempt not found." } });
-    const review = await getPrisma().assessmentReview.upsert({ where: { assessmentId_attemptId: { assessmentId: access.assessment.id, attemptId: attempt.id } }, update: input, create: { ...input, assessmentId: access.assessment.id, attemptId: attempt.id, reviewerId: req.auth.sub } });
-    res.json({ data: review });
   } catch (error) { next(error); }
 });
 
@@ -708,7 +541,6 @@ router.get("/dashboard", async (req, res, next) => {
       shortlisted,
       scheduledInterviews,
       completedInterviews,
-      pendingAssessments,
       offersReleased,
       hires,
       recentApplications,
@@ -723,7 +555,6 @@ router.get("/dashboard", async (req, res, next) => {
       getPrisma().application.count({ where: { ...applicationWhere, status: "SHORTLISTED" } }),
       getPrisma().recruiterInterview.count({ where: { companyId: { in: companyIds }, status: { in: ["SCHEDULED", "CONFIRMED"] } } }),
       getPrisma().recruiterInterview.count({ where: { companyId: { in: companyIds }, status: "COMPLETED" } }),
-      getPrisma().assessmentAssignment.count({ where: { assessment: { ownerCompanyId: { in: companyIds } }, status: { in: ["ASSIGNED", "IN_PROGRESS"] } } }),
       getPrisma().offer.count({ where: { application: { job: { companyId: { in: companyIds } } }, status: "SENT" } }),
       getPrisma().application.count({ where: { ...applicationWhere, status: "HIRED" } }),
       getPrisma().application.findMany({ where: applicationWhere, include: { job: { select: { title: true, company: { select: { name: true } } } }, student: { select: { fullName: true, email: true } } }, orderBy: { appliedAt: "desc" }, take: 8 }),
@@ -747,7 +578,6 @@ router.get("/dashboard", async (req, res, next) => {
         shortlisted,
         scheduledInterviews,
         completedInterviews,
-        pendingAssessments,
         offersReleased,
         hires,
         recentApplications,
@@ -781,7 +611,7 @@ router.get("/dashboard/summary", async (req, res, next) => {
         const base = { job: { companyId: { in: companyIds } } };
         const companyKey = companyIds.slice().sort().join(",");
         const data = await cached(`recruiter:dashboard-summary:${companyKey}:${today.start.toISOString().slice(0, 10)}:all`, async () => {
-          const [openJobs, openJobsPrevious, newApplicants, previousApplicants, interviewsToday, interviewsNext7, offersAwaiting, expiringOffers, applications, pipeline, upcoming, stageChanges, newApplications, offerResponses, jobs, members, assessmentsAwaitingReview] = await Promise.all([
+          const [openJobs, openJobsPrevious, newApplicants, previousApplicants, interviewsToday, interviewsNext7, offersAwaiting, expiringOffers, applications, pipeline, upcoming, stageChanges, newApplications, offerResponses, jobs, members] = await Promise.all([
             getPrisma().job.count({ where: { companyId: { in: companyIds }, status: { in: ["DRAFT", "PUBLISHED", "PAUSED"] } } }),
             getPrisma().job.count({ where: { companyId: { in: companyIds }, status: { in: ["DRAFT", "PUBLISHED", "PAUSED"] }, createdAt: { lt: weekStart } } }),
             getPrisma().application.count({ where: { ...base, appliedAt: { gte: weekStart, lt: today.end } } }),
@@ -798,11 +628,10 @@ router.get("/dashboard/summary", async (req, res, next) => {
             getPrisma().offer.findMany({ where: { job: { companyId: { in: companyIds } }, respondedAt: { gte: weekStart } }, include: { job: { select: { title: true } } }, orderBy: { respondedAt: "desc" }, take: 20 }),
             getPrisma().job.count({ where: { companyId: { in: companyIds } } }),
             getPrisma().companyMember.count({ where: { companyId: { in: companyIds }, active: true } }),
-            getPrisma().assessmentAssignment.findMany({ where: { assessment: { ownerCompanyId: { in: companyIds } }, status: "SUBMITTED" }, include: { assessment: { select: { id: true, title: true } }, student: { select: { id: true, fullName: true, email: true } } }, orderBy: { updatedAt: "asc" }, take: 20 }),
           ]);
           return {
             kpis: { openJobs, newApplicants, interviewsToday: interviewsToday.length, offersAwaitingResponse: offersAwaiting, trends: { openJobs: openJobs - openJobsPrevious, newApplicants: newApplicants - previousApplicants } },
-            actionRequired: { applicationsAwaitingReview: applications.filter((item) => item.status === "APPLIED"), assessmentsAwaitingReview, interviews: [...interviewsToday, ...interviewsNext7], offersExpiring: expiringOffers },
+            actionRequired: { applicationsAwaitingReview: applications.filter((item) => item.status === "APPLIED"), interviews: [...interviewsToday, ...interviewsNext7], offersExpiring: expiringOffers },
             pipeline: pipeline.map((item) => ({ stage: item.status, count: item._count._all })),
             upcomingInterviews: upcoming,
             recentActivity: [...stageChanges.map((item) => ({ type: "stage_change", id: item.id, title: item.toStatus, detail: item.application.job.title, createdAt: item.createdAt })), ...newApplications.map((item) => ({ type: "new_application", id: item.id, title: "New application", detail: `${item.student.fullName || item.student.email} · ${item.job.title}`, createdAt: item.appliedAt })), ...offerResponses.map((item) => ({ type: "offer_response", id: item.id, title: `Offer ${item.status.toLowerCase()}`, detail: item.job.title, createdAt: item.respondedAt }))].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 20),
@@ -836,14 +665,14 @@ router.get("/analytics", async (req, res, next) => {
     });
 
 function emptyAnalytics(from, to) {
-      return { from, to, funnel: [], perJob: [], scoreDistribution: [], topSources: [], metrics: { timeToHireDays: null, offerAcceptanceRate: null, assessmentPassRate: null, interviewToOfferRatio: null } };
+      return { from, to, funnel: [], perJob: [], topSources: [], metrics: { timeToHireDays: null, offerAcceptanceRate: null, interviewToOfferRatio: null } };
     }
 async function buildAnalytics({ from, to, jobId, companyIds }) {
       const prisma = getPrisma();
       const jobWhere = { companyId: { in: companyIds }, ...(jobId ? { id: jobId } : {}) };
       const applications = await prisma.application.findMany({ where: { job: jobWhere, appliedAt: { gte: from, lte: to } }, include: { job: { select: { id: true, title: true } }, stageHistory: { orderBy: { createdAt: "asc" } } } });
       const histories = applications.flatMap((item) => item.stageHistory);
-      const stages = ["APPLIED", "SCREENING", "SHORTLISTED", "ASSESSMENT", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED", "REJECTED"];
+      const stages = ["APPLIED", "SCREENING", "SHORTLISTED", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED", "REJECTED"];
       const funnel = stages.map((stage, index) => {
         const count = applications.filter((item) => item.stageHistory.some((history) => history.toStatus === stage) || item.status === stage).length;
         const previous = index ? applications.filter((item) => item.stageHistory.some((history) => history.toStatus === stages[index - 1]) || item.status === stages[index - 1]).length : applications.length;
@@ -851,14 +680,13 @@ async function buildAnalytics({ from, to, jobId, companyIds }) {
       });
       const offers = await prisma.offer.findMany({ where: { job: jobWhere, createdAt: { gte: from, lte: to } }, select: { status: true, respondedAt: true } });
       const interviews = await prisma.recruiterInterview.count({ where: { companyId: { in: companyIds }, ...(jobId ? { application: { jobId } } : {}), createdAt: { gte: from, lte: to } } });
-      const attempts = await prisma.assessmentAttempt.findMany({ where: { assignment: { job: jobWhere }, submittedAt: { gte: from, lte: to } }, select: { score: true } });
       const perJob = [...new Map(applications.map((item) => [item.job.id, item.job])).values()].map((job) => {
         const rows = applications.filter((item) => item.job.id === job.id);
-        return { jobId: job.id, jobTitle: job.title, applicants: rows.length, shortlisted: rows.filter((item) => ["SHORTLISTED", "ASSESSMENT", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED"].includes(item.status)).length, hired: rows.filter((item) => item.status === "HIRED").length };
+        return { jobId: job.id, jobTitle: job.title, applicants: rows.length, shortlisted: rows.filter((item) => ["SHORTLISTED", "TECHNICAL_INTERVIEW", "HR_INTERVIEW", "SELECTED", "OFFER_RELEASED", "HIRED"].includes(item.status)).length, hired: rows.filter((item) => item.status === "HIRED").length };
       });
       return {
-        from, to, funnel, perJob, topSources: [], scoreDistribution: scoreBuckets(attempts.map((item) => Number(item.score)).filter(Number.isFinite)),
-        metrics: { timeToHireDays: averageHireDays(applications), offerAcceptanceRate: offers.length ? Math.round((offers.filter((item) => item.status === "ACCEPTED").length / offers.length) * 1000) / 10 : null, assessmentPassRate: attempts.length ? Math.round((attempts.filter((item) => Number(item.score) >= 60).length / attempts.length) * 1000) / 10 : null, interviewToOfferRatio: interviews ? Math.round((offers.length / interviews) * 1000) / 10 : null },
+        from, to, funnel, perJob, topSources: [],
+        metrics: { timeToHireDays: averageHireDays(applications), offerAcceptanceRate: offers.length ? Math.round((offers.filter((item) => item.status === "ACCEPTED").length / offers.length) * 1000) / 10 : null, interviewToOfferRatio: interviews ? Math.round((offers.length / interviews) * 1000) / 10 : null },
         rowCount: applications.length, historyCount: histories.length,
       };
     }
@@ -869,9 +697,6 @@ function averageStageDays(applications, stage) {
 function averageHireDays(applications) {
       const values = applications.map((item) => { const hired = item.stageHistory.find((history) => history.toStatus === "HIRED"); return hired ? (hired.createdAt - item.appliedAt) / 86400000 : null; }).filter(Boolean);
       return values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : null;
-    }
-function scoreBuckets(scores) {
-      return ["0-59", "60-79", "80-100"].map((range) => ({ range, count: scores.filter((score) => range === "0-59" ? score < 60 : range === "60-79" ? score < 80 : score <= 100).length })).filter((item) => item.count > 0);
     }
 module.exports = router;
 module.exports.isAuthorizedCompanyMember = isAuthorizedCompanyMember;

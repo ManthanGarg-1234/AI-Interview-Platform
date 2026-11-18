@@ -32,15 +32,16 @@ describe("application routes", () => {
     renderApp(path);
 
     expect(await screen.findByRole("heading", { name: heading })).toBeTruthy();
+    expect(api.get).not.toHaveBeenCalledWith("/auth/me");
   });
 
   it.each([
-    ["RECRUITER", "Company dashboard"],
+    ["RECRUITER", "Today’s hiring priorities"],
     ["ADMIN", "Platform governance"],
   ])("routes %s users from /app to their own workspace", async (role, heading) => {
     vi.spyOn(api, "get").mockImplementation(async (path) => {
       if (path === "/auth/me") return { data: { data: { id: "user-1", role } } };
-      if (path === "/recruiter/dashboard") return { data: { data: { companies: 1, activeJobs: 0, applications: 0, interviews: 0 } } };
+      if (path === "/recruiter/dashboard/summary") return { data: { data: { onboarding: { company: true, job: true, teammate: true, applicants: true }, kpis: { openJobs: 0, newApplicants: 0, interviewsToday: 0, offersAwaitingResponse: 0, trends: { openJobs: 0, newApplicants: 0 } }, actionRequired: { applicationsAwaitingReview: [], interviews: [], offersExpiring: [] }, pipeline: [], upcomingInterviews: [], recentActivity: [] } } };
       if (path === "/admin/dashboard") return { data: { data: { users: 1, companies: 0, jobs: 0 } } };
       throw new Error(`Unexpected API request: ${path}`);
     });
@@ -53,13 +54,13 @@ describe("application routes", () => {
   it("redirects users who open another role's route to their own workspace", async () => {
     vi.spyOn(api, "get").mockImplementation(async (path) => {
       if (path === "/auth/me") return { data: { data: { id: "recruiter-1", role: "RECRUITER" } } };
-      if (path === "/recruiter/dashboard") return { data: { data: { companies: 1, activeJobs: 0, applications: 0, interviews: 0 } } };
+      if (path === "/recruiter/dashboard/summary") return { data: { data: { onboarding: { company: true, job: true, teammate: true, applicants: true }, kpis: { openJobs: 0, newApplicants: 0, interviewsToday: 0, offersAwaitingResponse: 0, trends: { openJobs: 0, newApplicants: 0 } }, actionRequired: { applicationsAwaitingReview: [], interviews: [], offersExpiring: [] }, pipeline: [], upcomingInterviews: [], recentActivity: [] } } };
       throw new Error(`Unexpected API request: ${path}`);
     });
 
     renderApp("/student");
 
-    expect(await screen.findByRole("heading", { name: "Company dashboard" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Today’s hiring priorities" })).toBeTruthy();
   });
 
   it("renders the recruiter candidates navigation destination", async () => {
@@ -75,6 +76,55 @@ describe("application routes", () => {
 
     expect(await screen.findByRole("heading", { name: "Candidates" })).toBeTruthy();
     expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+  });
+
+  it("renders student recruiter interviews and keeps SPA navigation working", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "get").mockImplementation(async (path) => {
+      if (path === "/auth/me") return { data: { data: { id: "student-1", role: "STUDENT" } } };
+      if (path === "/interviews") return { data: { data: [] } };
+      if (path === "/me/notifications") return { data: { data: { unread: 0 } } };
+      if (path === "/coding/library/sheets") return { data: { data: { items: [{ id: "sheet-1", slug: "neetcode-core", name: "NeetCode Core Patterns", category: "DSA", source: "Independently curated", totalProblems: 30, topicCount: 8, solved: 2, completionPercent: 7, difficultyCounts: { EASY: 8, MEDIUM: 18, HARD: 4 } }], page: 1, pages: 1, total: 1 } } };
+      if (path === "/coding/library/sheets/neetcode-core") return { data: { data: {
+        sheet: { slug: "neetcode-core", name: "NeetCode Core Patterns", description: "Core interview patterns.", category: "DSA", source: "Independently curated" },
+        items: [{ id: "problem-1", slug: "two-sum", title: "Two Sum", difficulty: "EASY", platform: "LEETCODE", url: "https://leetcode.com/problems/two-sum/", verifiedAt: "2026-01-01", sheetOrder: 1, sheetTopic: { name: "Arrays" }, progress: { status: "NOT_STARTED" }, bookmarked: false }],
+        total: 1, pages: 1,
+      } } };
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+
+    renderApp("/student/recruiter-interviews");
+
+    expect(await screen.findByRole("heading", { name: "Recruiter interviews" })).toBeTruthy();
+    await user.click(screen.getByRole("link", { name: "Coding practice" }));
+    expect(await screen.findByRole("heading", { name: "Problem sheets" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "NeetCode Core Patterns" })).toBeTruthy();
+    await user.type(screen.getByRole("textbox", { name: "Search sheets" }), "Striver");
+    await waitFor(() => expect(api.get).toHaveBeenLastCalledWith("/coding/library/sheets", expect.objectContaining({
+      params: expect.objectContaining({ search: "Striver" }),
+    })));
+    await user.click(screen.getByRole("link", { name: "Open sheet" }));
+    expect(await screen.findByRole("heading", { name: "NeetCode Core Patterns" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Solve externally" }).getAttribute("href")).toBe("https://leetcode.com/problems/two-sum/");
+    await user.selectOptions(screen.getByLabelText("Difficulty"), "EASY");
+    await waitFor(() => expect(api.get).toHaveBeenLastCalledWith("/coding/library/sheets/neetcode-core", expect.objectContaining({
+      params: expect.objectContaining({ difficulty: "EASY" }),
+    })));
+  });
+
+  it("redirects legacy coding-editor URLs to the external-practice sheet catalog", async () => {
+    vi.spyOn(api, "get").mockImplementation(async (path) => {
+      if (path === "/auth/me") return { data: { data: { id: "student-1", role: "STUDENT" } } };
+      if (path === "/me/notifications") return { data: { data: { unread: 0 } } };
+      if (path === "/coding/library/sheets") return { data: { data: { items: [], page: 1, pages: 0, total: 0 } } };
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+
+    renderApp("/student/coding/old-editor-route");
+
+    expect(await screen.findByRole("heading", { name: "Problem sheets" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Submit" })).toBeNull();
   });
 
   it("allows administrators to create target role definitions", async () => {
@@ -139,10 +189,10 @@ describe("application routes", () => {
     vi.spyOn(api, "get").mockImplementation(async (path) => {
       if (path === "/auth/me") return { data: { data: { id: "student-1", role: "STUDENT" } } };
       if (path === "/subjects/aptitude") {
-        return { data: { data: { id: "subject-1", name: "Aptitude", topics: [{ id: "topic-1", slug: "data-interpretation", name: "Data Interpretation", _count: {} }], resources: [] }, progress: [] } };
+        return { data: { data: { id: "subject-1", name: "Aptitude", topics: [{ id: "topic-1", slug: "data-interpretation", name: "Data Interpretation", _count: { problemTopics: 0 } }] }, progress: [] } };
       }
       if (path === "/subjects/aptitude/topics/data-interpretation") {
-        return { data: { data: { id: "topic-1", name: "Data Interpretation", subject: { name: "Aptitude" }, resources: [], subtopics: [], problemTopics: [] }, progress: [{ topicId: "topic-1", resourceId: null, status: "IN_PROGRESS" }] } };
+        return { data: { data: { id: "topic-1", name: "Data Interpretation", subject: { name: "Aptitude" }, problemTopics: [] }, progress: [{ topicId: "topic-1", status: "IN_PROGRESS" }] } };
       }
       if (path === "/subjects/me/progress") return { data: { data: [] } };
       throw new Error(`Unexpected API request: ${path}`);
@@ -155,7 +205,7 @@ describe("application routes", () => {
     await waitFor(() => expect(post).toHaveBeenCalled());
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/subjects/aptitude/topics/data-interpretation"));
     expect(await screen.findByRole("heading", { name: "Data Interpretation" })).toBeTruthy();
-    expect(await screen.findByText(/No resources have been added/)).toBeTruthy();
+    expect(await screen.findByText("No linked practice problems yet.")).toBeTruthy();
     await waitFor(() => expect(post).toHaveBeenCalledWith("/subjects/aptitude/topics/data-interpretation/progress", { status: "IN_PROGRESS" }));
   });
 });

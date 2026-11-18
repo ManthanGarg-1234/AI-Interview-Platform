@@ -53,9 +53,9 @@ describe("target role preferences", () => {
         requiredSkills: [{
           name: "Databases",
           status: "EVIDENCE_AVAILABLE",
-          evidence: [{ type: "assessment", label: "Graded assessment evidence: Databases", accuracy: 80, questions: 5 }],
+          evidence: [{ type: "profile", label: "Verified profile skill: Databases" }],
         }],
-        coreSubjects: [{ name: "DBMS", status: "NO_ASSESSMENT_EVIDENCE" }],
+        coreSubjects: [{ name: "DBMS", status: "NOT_MEASURED" }],
         dsa: { solvedProblems: 3, byTopic: [{ topic: "Arrays", solved: 3 }], status: "REQUIREMENTS_NOT_CONFIGURED" },
         projects: { profileEntries: 1 },
         evidenceLimits: ["Readiness coverage is not a guarantee of placement or hiring success."],
@@ -67,7 +67,7 @@ describe("target role preferences", () => {
     await user.click(await screen.findByRole("button", { name: "View readiness report" }));
 
     expect(await screen.findByText("50% (1/2)")).toBeTruthy();
-    expect(screen.getByText("Graded assessment evidence: Databases · 80% across 5 questions")).toBeTruthy();
+    expect(screen.getByText("Verified profile skill: Databases")).toBeTruthy();
     expect(screen.getByText(/DSA: 3 solved problems across 1 tagged topics/)).toBeTruthy();
     expect(get).toHaveBeenCalledWith("/target-roles/mine/backend-developer/readiness");
   });

@@ -88,7 +88,6 @@ These cleanup actions require successful parity tests and explicit approval.
 
 - Coding problems/topics/test cases/submissions/results schema.
 - Monaco editor and multi-language model.
-- Queue-backed JDoodle adapter; preserve the existing provider boundary and
   avoid introducing a local execution server.
 - Server-enforced practice/contest/recruiter modes, limits, hidden tests,
   persistence, analytics, and submission history.

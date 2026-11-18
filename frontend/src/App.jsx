@@ -1,6 +1,7 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./lib/api";
+import { AuthProvider } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import PortalLayout from "./components/PortalLayout";
@@ -11,31 +12,22 @@ import SubjectDetailPage from "./pages/SubjectDetailPage";
 import TopicLearningPage from "./pages/TopicLearningPage";
 import ResumeAnalysisPage from "./pages/ResumeAnalysisPage";
 import CodingPracticePage from "./pages/CodingPracticePage";
-import CodingProblemPage from "./pages/CodingProblemPage";
+import CodingSheetPage from "./pages/CodingSheetPage";
+import CodingProblemDetailPage from "./pages/CodingProblemDetailPage";
 import InterviewDashboardPage from "./pages/InterviewDashboardPage";
 import InterviewSetupPage from "./pages/InterviewSetupPage";
 import InterviewRoomPage from "./pages/InterviewRoomPage";
 import InterviewHistoryPage from "./pages/InterviewHistoryPage";
 import InterviewResultsPage from "./pages/InterviewResultsPage";
-import AssessmentDashboardPage from "./pages/AssessmentDashboardPage";
-import AssessmentInstructionsPage from "./pages/AssessmentInstructionsPage";
-import ActiveAssessmentPage from "./pages/ActiveAssessmentPage";
-import AssessmentResultPage from "./pages/AssessmentResultPage";
 import PerformanceDashboardPage from "./pages/PerformanceDashboardPage";
 import LearningPlannerPage from "./pages/LearningPlannerPage";
-import MentorPage from "./pages/MentorPage";
-import ResourceLibraryPage from "./pages/ResourceLibraryPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import NotificationPreferencesPage from "./pages/NotificationPreferencesPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import RecruiterDashboardPage from "./pages/RecruiterDashboardPage";
 import JobsPage from "./pages/JobsPage";
 import RecruiterJobsPage from "./pages/RecruiterJobsPage";
-import RecruiterAssessmentsPage from "./pages/RecruiterAssessmentsPage";
-import RecruiterAssessmentReviewsPage from "./pages/RecruiterAssessmentReviewsPage";
 import JobDetailPage from "./pages/JobDetailPage";
-import ContestsPage from "./pages/ContestsPage";
-import ContestWorkspacePage from "./pages/ContestWorkspacePage";
 import RecruiterInterviewsPage from "./pages/RecruiterInterviewsPage";
 import StudentInterviewsPage from "./pages/StudentInterviewsPage";
 import InterviewerWorkspacePage from "./pages/InterviewerWorkspacePage";
@@ -44,12 +36,15 @@ import RecruiterCandidatesPage from "./pages/RecruiterCandidatesPage";
 import AdminTargetRolesPage from "./pages/AdminTargetRolesPage";
 import DSASheetsPage from "./pages/DSASheetsPage";
 import AdminDSASheetsPage from "./pages/AdminDSASheetsPage";
+import AdminCodingLibraryPage from "./pages/AdminCodingLibraryPage";
 
 function useCurrentUser() {
+  const { pathname } = useLocation();
   return useQuery({
     queryKey: ["current-user"],
     queryFn: async () => (await api.get("/auth/me")).data.data,
     retry: false,
+    enabled: !["/login", "/register"].includes(pathname),
   });
 }
 
@@ -94,11 +89,12 @@ function AppRoutes() {
       <Route path="/student/jobs/:id" element={student(<JobDetailPage />)} />
       <Route path="/student/resume-analysis" element={student(<ResumeAnalysisPage />)} />
       <Route path="/student/coding" element={student(<CodingPracticePage />)} />
-      <Route path="/student/coding/:slug" element={student(<CodingProblemPage />)} />
+      <Route path="/student/coding/sheets" element={student(<CodingPracticePage />)} />
+      <Route path="/student/coding/sheets/:slug" element={student(<CodingSheetPage />)} />
+      <Route path="/student/coding/problems/:slug" element={student(<CodingProblemDetailPage />)} />
+      <Route path="/student/coding/:slug" element={student(<Navigate to="/student/coding" replace />)} />
       <Route path="/student/dsa-sheets" element={student(<DSASheetsPage />)} />
       <Route path="/student/dsa-sheets/:slug" element={student(<DSASheetsPage />)} />
-      <Route path="/student/contests" element={student(<ContestsPage />)} />
-      <Route path="/student/contests/:id" element={student(<ContestWorkspacePage />)} />
       <Route path="/student/interviews/new" element={student(<InterviewSetupPage />)} />
       <Route path="/student/interviews/history" element={student(<InterviewHistoryPage />)} />
       <Route path="/student/interviews/:id/room" element={student(<InterviewRoomPage />)} />
@@ -107,17 +103,10 @@ function AppRoutes() {
       <Route path="/student/recruiter-interviews" element={student(<StudentInterviewsPage />)} />
       <Route path="/student/analytics" element={student(<PerformanceDashboardPage />)} />
       <Route path="/student/planner" element={student(<LearningPlannerPage />)} />
-      <Route path="/student/mentor" element={student(<MentorPage />)} />
-      <Route path="/student/resources" element={student(<ResourceLibraryPage />)} />
       {/* Phase 19 — Subjects */}
       <Route path="/student/subjects" element={student(<SubjectsPage />)} />
       <Route path="/student/subjects/:slug/topics/:topicSlug" element={student(<TopicLearningPage />)} />
       <Route path="/student/subjects/:slug" element={student(<SubjectDetailPage />)} />
-      {/* Assessment routes — most specific first */}
-      <Route path="/student/assessments/attempts/:id" element={student(<ActiveAssessmentPage />)} />
-      <Route path="/student/assessments/results/:id" element={student(<AssessmentResultPage />)} />
-      <Route path="/student/assessments/:id" element={student(<AssessmentInstructionsPage />)} />
-      <Route path="/student/assessments" element={student(<AssessmentDashboardPage />)} />
       {/* Student wildcard — catches any unmatched /student/* */}
       <Route path="/student/*" element={student(<StudentDashboardPage />)} />
 
@@ -133,13 +122,12 @@ function AppRoutes() {
       <Route path="/recruiter" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterDashboardPage />)}</ProtectedRoute>} />
       <Route path="/recruiter/jobs" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterJobsPage />)}</ProtectedRoute>} />
       <Route path="/recruiter/interviews" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterInterviewsPage />)}</ProtectedRoute>} />
-      <Route path="/recruiter/assessments" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterAssessmentsPage />)}</ProtectedRoute>} />
-      <Route path="/recruiter/assessments/:id/reviews" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterAssessmentReviewsPage />)}</ProtectedRoute>} />
       <Route path="/recruiter/candidates" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterCandidatesPage />)}</ProtectedRoute>} />
       <Route path="/recruiter/*" element={<ProtectedRoute roles={["RECRUITER"]}>{portal(<RecruiterDashboardPage />)}</ProtectedRoute>} />
 
       {/* Admin routes */}
       <Route path="/admin/target-roles" element={<ProtectedRoute roles={["ADMIN"]}>{portal(<AdminTargetRolesPage />)}</ProtectedRoute>} />
+      <Route path="/admin/coding-library" element={<ProtectedRoute roles={["ADMIN"]}>{portal(<AdminCodingLibraryPage />)}</ProtectedRoute>} />
       <Route path="/admin/dsa-sheets" element={<ProtectedRoute roles={["ADMIN"]}>{portal(<AdminDSASheetsPage />)}</ProtectedRoute>} />
       <Route path="/admin/*" element={<ProtectedRoute roles={["ADMIN"]}>{portal(<AdminDashboardPage />)}</ProtectedRoute>} />
 
@@ -149,4 +137,10 @@ function AppRoutes() {
   );
 }
 
-export default function App() { return <AppRoutes />; }
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  );
+}

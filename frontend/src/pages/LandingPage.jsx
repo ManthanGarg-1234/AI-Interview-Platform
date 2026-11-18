@@ -12,7 +12,7 @@ const rise = {
 const features = [
   { icon: Video, label: "AI interview practice", title: "Walk into interviews with a plan.", text: "Practice role-specific questions, sharpen your answers, and get clear feedback on what to improve.", to: "/student/interviews", action: "Explore interview practice" },
   { icon: FileCheck2, label: "Resume intelligence", title: "Make every line work harder.", text: "Understand how your resume aligns to a role, spot missing details, and improve your application with focused guidance.", to: "/student/resume-analysis", action: "Explore resume analysis" },
-  { icon: Code2, label: "Technical preparation", title: "Build skills by doing.", text: "Strengthen problem-solving with structured coding practice and a workspace built for deliberate repetition.", to: "/student/coding", action: "Explore coding practice" },
+  { icon: Code2, label: "Technical preparation", title: "Build skills by doing.", text: "Strengthen problem-solving with curated DSA sheets, useful filters, and direct links to trusted practice platforms.", to: "/student/coding", action: "Explore coding practice" },
 ];
 
 export default function LandingPage() {
@@ -98,11 +98,11 @@ export default function LandingPage() {
         </section>
 
         <section className="lp-coding-band">
-          <div className="lp-code-glyph"><Code2 size={28} /></div><div><span className="lp-eyebrow">TECHNICAL PREPARATION</span><h2>Make progress one problem at a time.</h2><p>Practice coding with a focused workspace and keep your preparation moving at a steady pace.</p></div><Button as={Link} to="/student/coding" variant="secondary" className="lp-outline-cta">Explore coding practice <ArrowRight size={16} /></Button>
+          <div className="lp-code-glyph"><Code2 size={28} /></div><div><span className="lp-eyebrow">TECHNICAL PREPARATION</span><h2>Make progress one problem at a time.</h2><p>Choose an interview-focused problem sheet, filter by topic or difficulty, and solve each problem on its original platform.</p></div><Button as={Link} to="/student/coding" variant="secondary" className="lp-outline-cta">Explore coding practice <ArrowRight size={16} /></Button>
         </section>
 
         <section id="recruiters" className="lp-recruiter-section">
-          <motion.div {...reveal} className="lp-recruiter-copy"><span className="lp-eyebrow">FOR RECRUITERS</span><h2>Meet candidates through a <span>more connected process.</span></h2><p>Bring job, candidate, assessment, and interview steps into a shared hiring workspace—so your team can stay aligned from first review to final conversation.</p><Button as={Link} to="/login" variant="secondary" className="lp-outline-cta">Recruiter sign in <ArrowRight size={16} /></Button></motion.div>
+          <motion.div {...reveal} className="lp-recruiter-copy"><span className="lp-eyebrow">FOR RECRUITERS</span><h2>Meet candidates through a <span>more connected process.</span></h2><p>Bring jobs, candidates, and interviews into a shared hiring workspace—so your team can stay aligned from first review to final conversation.</p><Button as={Link} to="/login" variant="secondary" className="lp-outline-cta">Recruiter sign in <ArrowRight size={16} /></Button></motion.div>
           <div className="lp-hiring-flow" aria-label="Hiring workflow: Roles, Candidates, Interviews">
             <div className="lp-flow-step"><span>01</span><BriefcaseBusiness size={18} /><b>Roles</b><small>Shape the opportunity</small></div><ArrowRight className="lp-flow-arrow" size={18} /><div className="lp-flow-step"><span>02</span><BarChart3 size={18} /><b>Candidates</b><small>Review with context</small></div><ArrowRight className="lp-flow-arrow" size={18} /><div className="lp-flow-step"><span>03</span><Video size={18} /><b>Interviews</b><small>Move forward together</small></div>
           </div>

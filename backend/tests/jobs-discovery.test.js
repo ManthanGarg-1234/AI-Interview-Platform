@@ -44,6 +44,7 @@ test("job discovery applies filters and exposes only the current student's saved
   assert.equal(response.status, 200);
   assert.deepEqual(query.where, {
     status: "PUBLISHED",
+    company: { status: "VERIFIED" },
     OR: [
       { title: { contains: "Engineer", mode: "insensitive" } },
       { description: { contains: "Engineer", mode: "insensitive" } },

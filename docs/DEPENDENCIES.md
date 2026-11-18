@@ -33,7 +33,6 @@ Install only when Phase 0 is approved and the workspace is ready:
 - `pg` if required by the selected Prisma setup
 - `socket.io`
 - `ioredis`, `bullmq`
-- provider-specific email, object storage, AI, and JDoodle integrations only after
   provider selection
 - `supertest` and test database tooling
 
@@ -45,8 +44,7 @@ without an explicit support decision.
 
 Not found at the time of this original inventory: PostgreSQL server/client
 (`psql`), Redis (`redis-server`), and Docker. PostgreSQL and Redis may be
-provided by approved native services or managed hosting. Docker is optional;
-JDoodle execution does not require Docker Desktop or a local execution stack.
+provided by approved native services or managed hosting. Docker is optional.
 
 ## Manual setup required
 
@@ -54,12 +52,9 @@ JDoodle execution does not require Docker Desktop or a local execution stack.
 2. Verify `psql --version` and `redis-cli --version` when those clients are
    available; Docker is not a prerequisite.
 3. Configure the existing `DATABASE_URL` and `REDIS_URL` for those services.
-   JDoodle credentials remain server-side and are not exposed to React.
 
 The preceding setup inventory is historical. The current repository contains
-its manifests and Compose file, but neither Docker nor Compose is required for
-the JDoodle provider. See [JDOODLE_CONFIGURATION.md](./JDOODLE_CONFIGURATION.md)
-for the current execution configuration.
+its manifests and Compose file. Code execution is currently disabled.
 
 ## External services and credentials requiring user involvement
 
@@ -69,7 +64,6 @@ for the current execution configuration.
   data-processing decision.
 - Email provider credentials and verified sender/domain.
 - Object storage account, bucket, region, private access policy, and lifecycle.
-- JDoodle Compiler REST API credentials and Java version index.
 - WebRTC signaling deployment and TURN server credentials.
 - Production hosting, DNS, TLS, observability, and secret management.
 - OAuth/GitHub/LeetCode integration credentials only if those integrations are
@@ -82,7 +76,6 @@ Never put these values in source, frontend bundles, Git, or documentation.
 - PostgreSQL and Redis may be local native services or managed services; Docker
   Compose is optional.
 - Release 1 uses an external LLM API behind a backend provider abstraction.
-- Release 1 uses JDoodle behind the existing code execution adapter and BullMQ worker; Java is enabled first.
 - Release 1 uses SSE for AI streaming and text-only interviews.
 - Voice, WebRTC/TURN, and media storage are Release 2 unless separately
   approved.

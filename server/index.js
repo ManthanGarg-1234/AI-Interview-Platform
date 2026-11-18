@@ -45,21 +45,7 @@ app.use((error, _req, res, _next) => {
     "P2024",
   ].includes(error.code);
   const databaseSchemaUnavailable = ["P2021", "P2022"].includes(error.code);
-  const codingUnavailable = [
-    "CODING_QUEUE_UNAVAILABLE",
-    "CODING_QUEUE_CONFIGURATION_INVALID",
-    "CODING_REDIS_UNAVAILABLE",
-    "CODING_WORKER_UNAVAILABLE",
-    "CODING_WORKER_STATUS_UNKNOWN",
-    "JDOODLE_UNAVAILABLE",
-    "JDOODLE_CONFIGURATION_INVALID",
-    "JDOODLE_AUTHENTICATION_FAILED",
-    "JDOODLE_CREDITS_EXHAUSTED",
-    "JDOODLE_PROVIDER_ERROR",
-    "JDOODLE_PROVIDER_UNAVAILABLE",
-    "JDOODLE_PROVIDER_RESPONSE_INVALID",
-    "JDOODLE_REQUEST_TIMEOUT",
-  ].includes(error.code);
+  const codingUnavailable = error.code === "CODE_EXECUTION_UNAVAILABLE";
   const status = Number.isInteger(error.status)
     ? error.status
     : error.code === "LIMIT_FILE_SIZE"
@@ -78,17 +64,7 @@ app.use((error, _req, res, _next) => {
           ? "Coding execution is unavailable because no BullMQ coding worker is connected."
           : error.code === "CODING_REDIS_UNAVAILABLE" ||
               error.code === "CODING_QUEUE_UNAVAILABLE"
-            ? "Coding execution is unavailable because the Redis queue cannot be reached."
-            : error.code === "JDOODLE_UNAVAILABLE"
-              ? "Coding execution is unavailable because JDoodle credentials are not configured."
-              : error.code === "JDOODLE_AUTHENTICATION_FAILED"
-                ? "Coding execution is unavailable because JDoodle rejected its configured credentials."
-                : error.code === "JDOODLE_CREDITS_EXHAUSTED"
-                  ? "Coding execution is unavailable because the JDoodle daily credit allowance is exhausted."
-                  : error.code === "JDOODLE_CONFIGURATION_INVALID" ||
-                      error.code === "CODING_QUEUE_CONFIGURATION_INVALID"
-                    ? "Coding execution has an invalid Redis or JDoodle configuration."
-                    : "Coding execution is temporarily unavailable."
+            ? "Coding execution is unavailable because the Redis queue cannot be reached.": "Coding execution is temporarily unavailable."
         : status >= 500
           ? "Unexpected server error."
           : error.message;

@@ -15,7 +15,7 @@ test("coding API enables Java execution only", () => {
 test("student submission serialization exposes safe public feedback only", () => {
   const result = safeExecutionResult({
     id: "result-id",
-    provider: "jdoodle",
+    provider: "external execution provider",
     passedTests: 1,
     totalTests: 2,
     executionTimeMs: 20,
@@ -85,7 +85,7 @@ test("student submission serialization exposes safe public feedback only", () =>
 test("student submission serialization does not expose raw output without public feedback", () => {
   const result = safeExecutionResult({
     id: "result-id",
-    provider: "jdoodle",
+    provider: "external execution provider",
     passedTests: 0,
     totalTests: 1,
     stdout: "raw-hidden-output",

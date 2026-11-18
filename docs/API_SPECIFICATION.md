@@ -18,15 +18,15 @@ errors.
 | Jobs           | list/detail, create/update/publish/pause/close                                                                                 | Public/Recruiter/Admin  |
 | Applications   | apply, list, detail, stage transitions, notes, decisions                                                                       | Student/Recruiter/Admin |
 | Coding         | problems, submissions, execution result, history                                                                               | Student/Recruiter/Admin |
-| Assessments    | catalogue, create, assign, attempt, autosave, submit, results                                                                  | All by role             |
 | Interviews     | configure, schedule, join, questions, answers, evaluation                                                                      | Student/Recruiter/Admin |
-| Learning       | subjects/topics/resources/progress/activity                                                                                    | Student/Admin           |
+| Learning       | subjects/topics/progress/activity                                                                                              | Student/Admin           |
 | Planner        | plans/goals/tasks/recommendations/completions                                                                                  | Student                 |
 | Resumes        | upload, versions, analyze, suggestions, approval                                                                               | Student                 |
-| AI             | conversations/messages/stream, interview evaluation, usage                                                                     | Student/Admin           |
+| AI             | interview evaluation and usage                                                                                                  | Student/Admin           |
 | Analytics      | student, recruiter, admin dashboards and trends                                                                                | Role-scoped             |
 | Notifications  | list/read/preferences                                                                                                          | Current user            |
 | Admin/Security | users, moderation, events, audit, settings                                                                                     | Admin                   |
+| Coding sheets  | published preparation sheets and per-student problem progress                                                                   | Student/Admin           |
 
 ## Endpoint contract requirements
 
@@ -54,7 +54,5 @@ idempotency requirements where applicable.
   refresh-token rotation, server-side sessions, and CSRF protection.
 - Release 1 AI streaming uses authenticated Server-Sent Events. Socket.IO is
   reserved for future interview presence/signaling.
-- Coding uses JDoodle through the existing dedicated adapter and BullMQ worker.
-  Java is the only enabled execution language in this release; Express and the
-  worker host never execute untrusted source locally.
+- Code execution is currently disabled while a replacement runner is selected.
 - Release 1 includes text AI interviews. Voice/video is Release 2.

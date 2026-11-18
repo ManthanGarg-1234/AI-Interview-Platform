@@ -34,10 +34,12 @@ preparation, recruiter hiring workflows, and administrative governance.
 
 ### Coding
 
-- Browse searchable, filterable problems and topics.
-- Edit supported languages in Monaco, run samples, submit hidden tests, and view
-  persisted verdicts, resource use, and history.
-- Enforce practice, contest, and recruiter assessment restrictions server-side.
+- Browse curated problem sheets and filter by source, topic, difficulty,
+  platform, and personal progress.
+- Open problem links on their original platforms and track progress in
+  CareerPrepAI; the student experience does not embed a code editor or execute
+  submissions.
+- Keep server-side access controls on authenticated coding and assessment APIs.
 - Never execute untrusted code in the Express process.
 
 ### Recruiter

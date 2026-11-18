@@ -8,17 +8,16 @@ const { invalidateRecruiterCache } = require("./recruiter");
 
 const router = express.Router();
 const actionSchema = z.object({ status: z.enum(["ACTIVE", "SUSPENDED", "DELETED"]), reason: z.string().trim().min(3).max(1000) });
-const audit = (actorUserId, action, resourceType, resourceId, before, after) => getPrisma().auditLog.create({ data: { actorUserId, createdByUserId: actorUserId, action, resourceType, resourceId, before, after, requestId: `admin-${Date.now()}` } });
 
 router.get("/dashboard", async (_req, res, next) => {
   try {
     const prisma = getPrisma();
-    const [students, recruiters, companies, jobs, applications, assessments, submissions, interviews, security] = await Promise.all([
+    const [students, recruiters, companies, jobs, applications, submissions, interviews, security] = await Promise.all([
       prisma.user.count({ where: { role: "STUDENT" } }), prisma.user.count({ where: { role: "RECRUITER" } }), prisma.company.count(),
-      prisma.job.count({ where: { status: "PUBLISHED" } }), prisma.application.count(), prisma.assessment.count(), prisma.codeSubmission.count(),
+      prisma.job.count({ where: { status: "PUBLISHED" } }), prisma.application.count(), prisma.codeSubmission.count(),
       prisma.interviewSession.count(), prisma.securityEvent.count({ where: { status: { not: "RESOLVED" } } }),
     ]);
-    res.json({ data: { students, recruiters, companies, activeJobs: jobs, applications, assessments, codingSubmissions: submissions, interviews, openSecurityEvents: security } });
+    res.json({ data: { students, recruiters, companies, activeJobs: jobs, applications, codingSubmissions: submissions, interviews, openSecurityEvents: security } });
   } catch (error) { next(error); }
 });
 
@@ -35,8 +34,42 @@ router.patch("/users/:id/status", async (req, res, next) => {
     const prisma = getPrisma();
     const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, email: true, role: true, status: true } });
     if (!user) return res.status(404).json({ error: { code: "NOT_FOUND", message: "User not found." } });
-    const updated = await prisma.user.update({ where: { id: user.id }, data: { status: input.status } });
-    await audit(req.auth.sub, "USER_STATUS_CHANGED", "User", user.id, { status: user.status }, { status: updated.status, reason: input.reason });
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.user.update({ where: { id: user.id }, data: { status: input.status } });
+      if (["SUSPENDED", "DELETED"].includes(input.status)) {
+        const revokedAt = new Date();
+        const revokeReason = `ADMIN_${input.status}`;
+        await Promise.all([
+          tx.userSession.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt, revokeReason },
+          }),
+          tx.tokenFamily.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt, revokeReason },
+          }),
+          tx.refreshToken.updateMany({
+            where: { userId: user.id, revokedAt: null },
+            data: { revokedAt, revokeReason },
+          }),
+        ]);
+      }
+      await tx.auditLog.create({ data: {
+        actorUserId: req.auth.sub,
+        createdByUserId: req.auth.sub,
+        action: "USER_STATUS_CHANGED",
+        resourceType: "User",
+        resourceId: user.id,
+        before: { status: user.status },
+        after: { status: result.status, reason: input.reason },
+        requestId: `admin-${Date.now()}`,
+      } });
+      return result;
+    });
+    const companyMemberships = user.role === "RECRUITER"
+      ? await prisma.companyMember.findMany({ where: { userId: user.id }, select: { companyId: true } })
+      : [];
+    await invalidateRecruiterCache(companyMemberships.map(({ companyId }) => companyId));
     await createNotification({ userId: user.id, type: "SECURITY", title: "Account status updated", body: `Your account status is now ${updated.status}.`, critical: true });
     res.json({ data: { id: updated.id, status: updated.status } });
   } catch (error) { next(error); }

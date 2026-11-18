@@ -286,6 +286,11 @@ test("student dashboard reports caller-owned profile and recorded activity data"
   assert.equal(response.status, 200);
   assert.equal(result.data.profile.name, "Dashboard Student");
   assert.equal(result.data.profile.completionPercent, 10);
+  assert.equal(result.data.student.name, "Dashboard Student");
+  assert.equal(result.data.student.profileCompletion, 10);
+  assert.equal(result.data.overview.applicationsTotal, 0);
+  assert.equal(result.data.overview.codingSolved, 0);
+  assert.deepEqual(result.data.upcoming.interviews, []);
   assert.equal(result.data.recentActivity[0].type, "PRACTICE_COMPLETED");
   assert.equal(
     result.data.weeklyActivity.reduce((sum, day) => sum + day.count, 0),
@@ -414,89 +419,6 @@ test("study plans support owned task creation, status changes, and deletion", as
     }),
     0,
   );
-});
-
-test("mentor conversations are persisted and scoped to their owner", async () => {
-  const previousProvider = process.env.LLM_PROVIDER;
-  const previousGeminiKey = process.env.GEMINI_API_KEY;
-  process.env.LLM_PROVIDER = "none";
-  delete process.env.GEMINI_API_KEY;
-  const user = await seedUser();
-  await getPrisma().studentProfile.create({
-    data: { userId: user.id, firstName: "Mentor", lastName: "Student" },
-  });
-  const { cookie } = await loginUser(user);
-  const created = await request("/me/mentor/conversations", {
-    ...authenticatedOptions(cookie, "POST"),
-    body: { message: "How should I prepare for a backend interview?" },
-  });
-  const createdBody = await created.json();
-
-  assert.equal(created.status, 201);
-  assert.equal(createdBody.data.messages.length, 2);
-  assert.equal(createdBody.data.messages[0].role, "USER");
-  assert.equal(createdBody.data.messages[1].role, "ASSISTANT");
-
-  const conversationId = createdBody.data.id;
-  const list = await request("/me/mentor/conversations", { cookie });
-  assert.equal((await list.json()).data[0].id, conversationId);
-
-  const appended = await request(
-    `/me/mentor/conversations/${conversationId}/messages`,
-    {
-      ...authenticatedOptions(cookie, "POST"),
-      body: { message: "Can you suggest a practice schedule?" },
-    },
-  );
-  assert.equal(appended.status, 201);
-  assert.equal((await appended.json()).data.messages[0].role, "USER");
-
-  const renamed = await request(`/me/mentor/conversations/${conversationId}`, {
-    ...authenticatedOptions(cookie, "PATCH"),
-    body: { subject: "Backend preparation" },
-  });
-  assert.equal(renamed.status, 204);
-  const afterRename = await request("/me/mentor/conversations", { cookie });
-  assert.equal(
-    (await afterRename.json()).data[0].subject,
-    "Backend preparation",
-  );
-
-  const deleted = await request(`/me/mentor/conversations/${conversationId}`, {
-    ...authenticatedOptions(cookie, "DELETE"),
-  });
-  assert.equal(deleted.status, 204);
-  if (previousProvider === undefined) delete process.env.LLM_PROVIDER; else process.env.LLM_PROVIDER = previousProvider;
-  if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previousGeminiKey;
-});
-
-test("another student cannot access or append to a mentor conversation", async () => {
-  const previousProvider = process.env.LLM_PROVIDER;
-  const previousGeminiKey = process.env.GEMINI_API_KEY;
-  process.env.LLM_PROVIDER = "none";
-  delete process.env.GEMINI_API_KEY;
-  try {
-    const owner = await seedUser();
-    const other = await seedUser();
-    await getPrisma().studentProfile.create({ data: { userId: owner.id, firstName: "Owner", lastName: "Student" } });
-    await getPrisma().studentProfile.create({ data: { userId: other.id, firstName: "Other", lastName: "Student" } });
-    const ownerLogin = await loginUser(owner);
-    const created = await request("/me/mentor/conversations", {
-      ...authenticatedOptions(ownerLogin.cookie, "POST"),
-      body: { message: "Private preparation question" },
-    });
-    assert.equal(created.status, 201);
-    const conversationId = (await created.json()).data.id;
-    const otherLogin = await loginUser(other);
-    const appended = await request(`/me/mentor/conversations/${conversationId}/messages`, {
-      ...authenticatedOptions(otherLogin.cookie, "POST"),
-      body: { message: "Trying to access another conversation" },
-    });
-    assert.equal(appended.status, 404);
-  } finally {
-    if (previousProvider === undefined) delete process.env.LLM_PROVIDER; else process.env.LLM_PROVIDER = previousProvider;
-    if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previousGeminiKey;
-  }
 });
 
 test("AI interview answers persist before provider evaluation and can be retried", async () => {
@@ -1723,9 +1645,6 @@ test("all student profile and resume surfaces reject unauthenticated access", as
     "/me/resume-versions/not-a-real-version/download",
     "/me/interviews",
     "/me/interviews/dashboard",
-    "/me/assessments",
-    "/me/assessments/assignments",
-    "/me/assessments/attempts",
     "/me/notifications",
     "/me/notifications/preferences",
     "/admin/dashboard",

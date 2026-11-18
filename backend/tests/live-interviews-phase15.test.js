@@ -16,6 +16,7 @@ test("WebRTC signaling accepts bounded offers and ICE candidates only", () => {
     description: { type: "offer", sdp: "v=0\r\n" },
   });
   const candidate = signalSchema.safeParse({
+    to: "29ca3668-65b3-490e-b0ae-37d4ff6c3437",
     candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 },
   });
   const invalid = signalSchema.safeParse({ description: { type: "offer", sdp: "" } });

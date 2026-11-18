@@ -70,7 +70,7 @@ studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
     });
     if (!profileId) return res.status(404).json({ error: { code: "PROFILE_NOT_FOUND", message: "Student profile was not found." } });
 
-    const [skills, projects, solvedProblems, attempts] = await Promise.all([
+    const [skills, projects, solvedProblems] = await Promise.all([
       prisma.studentSkill.findMany({
         where: { studentId: profileId.id },
         include: { skill: { select: { name: true } } },
@@ -82,32 +82,6 @@ studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
       prisma.studentProblemProgress.findMany({
         where: { userId: req.auth.sub, status: "SOLVED" },
         select: { problem: { select: { title: true, topics: { select: { topic: { select: { name: true } } } } } } },
-      }),
-      prisma.assessmentAttempt.findMany({
-        where: { userId: req.auth.sub, status: { in: ["GRADED", "EXPIRED"] } },
-        orderBy: { submittedAt: "desc" },
-        take: 100,
-        select: {
-          result: { select: { topicBreakdown: true } },
-          assignment: {
-            select: {
-              assessment: {
-                select: {
-                  questions: {
-                    select: {
-                      question: {
-                        select: {
-                          topicId: true,
-                          topic: { select: { name: true, subject: { select: { name: true } } } },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
       }),
     ]);
 
@@ -125,30 +99,6 @@ studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
     }
     const codingTopics = new Set(codingTopicNames.keys());
     const codingTitles = solvedProblems.map(({ problem }) => problem.title);
-    const subjectAssessmentEvidence = new Map();
-    for (const attempt of attempts) {
-      if (!attempt.result || !attempt.result.topicBreakdown || typeof attempt.result.topicBreakdown !== "object") continue;
-      const topicsById = new Map();
-      for (const link of attempt.assignment.assessment.questions) {
-        const topic = link.question.topic;
-        if (link.question.topicId && topic) topicsById.set(link.question.topicId, topic);
-      }
-      for (const [topicId, result] of Object.entries(attempt.result.topicBreakdown)) {
-        const topic = topicsById.get(topicId);
-        const total = Number(result?.total || 0);
-        const correct = Number(result?.correct || 0);
-        if (!topic || !Number.isFinite(total) || !Number.isFinite(correct) || total <= 0) continue;
-        for (const name of [topic.name, topic.subject?.name].filter(Boolean)) {
-          const key = normalize(name);
-          const current = subjectAssessmentEvidence.get(key) || { correct: 0, total: 0, attempts: 0 };
-          current.correct += correct;
-          current.total += total;
-          current.attempts += 1;
-          subjectAssessmentEvidence.set(key, current);
-        }
-      }
-    }
-
     const requiredSkills = Array.isArray(selection.role.requiredSkills) ? selection.role.requiredSkills : [];
     const coreSubjects = Array.isArray(selection.role.coreSubjects) ? selection.role.coreSubjects : [];
     const skillReport = requiredSkills.map((name) => {
@@ -156,10 +106,6 @@ studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
       const evidence = [];
       if (verifiedSkillNames.has(key)) evidence.push({ type: "verified-skill", label: `Verified skill profile entry: ${name}` });
       if (codingTopics.has(key)) evidence.push({ type: "coding", label: `Solved coding problems tagged ${name}`, count: solvedProblems.filter(({ problem }) => problem.topics.some(({ topic }) => normalize(topic.name) === key)).length });
-      if (subjectAssessmentEvidence.has(key)) {
-        const assessment = subjectAssessmentEvidence.get(key);
-        evidence.push({ type: "assessment", label: `Graded assessment evidence: ${name}`, accuracy: Math.round((assessment.correct / assessment.total) * 100), questions: assessment.total });
-      }
       if (projectTechnologies.has(key)) evidence.push({ type: "project", label: `Project profile lists ${name}; not independently verified` });
       const selfReported = selfReportedSkillNames.has(key);
       return {
@@ -169,15 +115,12 @@ studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
       };
     });
     const subjectReport = coreSubjects.map((name) => {
-      const result = subjectAssessmentEvidence.get(normalize(name));
       return {
         name,
-        status: result ? "MEASURED" : "NO_ASSESSMENT_EVIDENCE",
-        ...(result ? { accuracy: Math.round((result.correct / result.total) * 100), questions: result.total, attempts: result.attempts } : {}),
+        status: "NOT_MEASURED",
       };
     });
-    const measuredCount = skillReport.filter((item) => item.status === "EVIDENCE_AVAILABLE").length
-      + subjectReport.filter((item) => item.status === "MEASURED").length;
+    const measuredCount = skillReport.filter((item) => item.status === "EVIDENCE_AVAILABLE").length;
     const requirementCount = skillReport.length + subjectReport.length;
 
     res.json({
@@ -188,7 +131,7 @@ studentRouter.get("/mine/:slug/readiness", async (req, res, next) => {
           measured: measuredCount,
           total: requirementCount,
           percent: requirementCount ? Math.round((measuredCount / requirementCount) * 100) : null,
-          definition: "Percentage of required skills and core subjects with linked coding, graded-assessment, or verified-skill evidence. It is not a proficiency or hiring prediction.",
+          definition: "Percentage of required skills with linked coding or verified-skill evidence. Core subjects are listed but not measured. This is not a proficiency or hiring prediction.",
         },
         requiredSkills: skillReport,
         coreSubjects: subjectReport,

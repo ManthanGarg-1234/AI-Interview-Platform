@@ -18,9 +18,6 @@ const userIds = [];
 const companyIds = [];
 const jobIds = [];
 const applicationIds = [];
-const assessmentIds = [];
-const assignmentIds = [];
-const attemptIds = [];
 const interviewIds = [];
 const offerIds = [];
 
@@ -52,17 +49,10 @@ test.before(async () => {
   origin = `http://127.0.0.1:${server.address().port}`;
 });
 test.after(async () => {
-  await prisma.assessmentReview.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
-  await prisma.assessmentAnswer.deleteMany({ where: { attemptId: { in: attemptIds } } });
-  await prisma.assessmentResult.deleteMany({ where: { attemptId: { in: attemptIds } } });
-  await prisma.assessmentAttempt.deleteMany({ where: { id: { in: attemptIds } } });
-  await prisma.assessmentAssignment.deleteMany({ where: { id: { in: assignmentIds } } });
   await prisma.recruiterInterview.deleteMany({ where: { id: { in: interviewIds } } });
   await prisma.offer.deleteMany({ where: { id: { in: offerIds } } });
   await prisma.applicationStageHistory.deleteMany({ where: { applicationId: { in: applicationIds } } });
   await prisma.application.deleteMany({ where: { id: { in: applicationIds } } });
-  await prisma.assessment.deleteMany({ where: { id: { in: assessmentIds } } });
-  await prisma.question.deleteMany({ where: { body: "Cross-portal journey question" } });
   await prisma.job.deleteMany({ where: { id: { in: jobIds } } });
   await prisma.companyVerification.deleteMany({ where: { companyId: { in: companyIds } } });
   await prisma.companyMember.deleteMany({ where: { companyId: { in: companyIds } } });
@@ -76,10 +66,11 @@ test.after(async () => {
   await prisma.$disconnect();
 });
 
-test("recruiter, admin, student, assessment, interview, and offer journey stays consistent", async () => {
+test("recruiter, admin, student, interview, and offer journey stays consistent", async () => {
   const recruiter = await user("RECRUITER", "journey-recruiter");
   const admin = await user("ADMIN", "journey-admin");
   const student = await user("STUDENT", "journey-student");
+  await prisma.studentProfile.create({ data: { userId: student.record.id, firstName: "Journey", lastName: "Student" } });
 
   const createdCompany = await request(recruiter.cookie, "/recruiter/companies", { method: "POST", body: { name: "Journey Company" } });
   assert.equal(createdCompany.response.status, 201);
@@ -113,25 +104,6 @@ test("recruiter, admin, student, assessment, interview, and offer journey stays 
     assert.equal((await request(recruiter.cookie, `/recruiter/applications/${applicationId}/status`, { method: "PATCH", body: { status } })).response.status, 200);
   }
   assert.equal((await request(recruiter.cookie, "/recruiter/dashboard/summary")).json.data.pipeline.find((item) => item.stage === "SHORTLISTED")?.count, 1);
-  const question = await prisma.question.create({ data: { body: "Cross-portal journey question", type: "SINGLE_CHOICE", difficulty: "EASY", answerKey: "a" } });
-  const assessment = await request(recruiter.cookie, "/recruiter/assessments", { method: "POST", body: { companyId, title: "Journey Assessment", type: "RECRUITER", durationSeconds: 600, questionIds: [question.id], codingProblemIds: [] } });
-  assert.equal(assessment.response.status, 201);
-  const assessmentId = assessment.json.data.id;
-  assessmentIds.push(assessmentId);
-  assert.equal((await request(recruiter.cookie, `/recruiter/assessments/${assessmentId}/status/publish`, { method: "POST" })).response.status, 200);
-  const assignment = await request(recruiter.cookie, `/recruiter/assessments/${assessmentId}/assignments`, { method: "POST", body: { studentUserId: student.record.id, jobId, applicationId } });
-  assert.equal(assignment.response.status, 201);
-  assignmentIds.push(assignment.json.data.id);
-  assert.equal((await request(student.cookie, "/me/assessments/assignments")).json.data.length, 1);
-  const attempt = await request(student.cookie, `/me/assessments/${assessmentId}/attempts`, { method: "POST" });
-  assert.equal(attempt.response.status, 201);
-  attemptIds.push(attempt.json.data.id);
-  assert.equal((await request(student.cookie, `/me/assessments/attempts/${attempt.json.data.id}/submit`, { method: "POST", body: { answers: [] } })).response.status, 200);
-  assert.equal((await request(recruiter.cookie, "/recruiter/dashboard/summary")).json.data.actionRequired.assessmentsAwaitingReview.length, 1);
-  const reviews = await request(recruiter.cookie, `/recruiter/assessments/${assessmentId}/reviews`);
-  assert.equal(reviews.json.data[0].attempt.status, "GRADED");
-  assert.equal((await request(recruiter.cookie, `/recruiter/assessments/${assessmentId}/attempts/${attempt.json.data.id}/review`, { method: "PUT", body: { rating: 5, note: "Reviewed." } })).response.status, 200);
-
   const start = new Date(Date.now() + 3_600_000);
   const interview = await request(recruiter.cookie, "/recruiter/interviews", { method: "POST", body: { applicationId, title: "Journey interview", timezone: "UTC", startsAt: start, endsAt: new Date(start.getTime() + 3_600_000), rounds: [{ name: "Technical" }], interviewerIds: [] } });
   assert.equal(interview.response.status, 201);

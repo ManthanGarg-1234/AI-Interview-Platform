@@ -60,11 +60,9 @@ application review and admin audit.
 
 ## Stage 4: Coding and assessments
 
-**Exit evidence:** Monaco flow, JDoodle adapter/credit tests, Java-only API
 validation, hidden-test protection, and assessment autosave/timeout/grading tests.
 
 - Coding problems, topics, submissions, execution results, and history.
-- JDoodle REST adapter through the existing BullMQ queue boundary.
 - Assessment bank, assignments, attempts, answers, scoring, and reports.
 
 ## Stage 5: AI and interview

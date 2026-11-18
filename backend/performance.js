@@ -3,35 +3,8 @@
 const express = require("express");
 const { z } = require("zod");
 const { getPrisma } = require("./prisma");
-const { generateJson, providerConfig } = require("./llm/provider");
 
 const router = express.Router();
-const mentorMessageSchema = z.object({ message: z.string().trim().min(1).max(5000) });
-const CAREER_MENTOR_SYSTEM_PROMPT = "You are a career-prep mentor for students. Help with resumes, interviews, coding practice, job search, and platform use. Be concise, accurate, practical, and say when unsure. Stay on topic and politely decline unrelated or harmful requests. Do not claim to be human.";
-const mentorRateWindows = new Map();
-
-function mentorRateLimit(req, res, next) {
-  const now = Date.now();
-  const key = req.auth?.sub || req.ip || "unknown";
-  const record = mentorRateWindows.get(key);
-  if (!record || record.expiresAt <= now) {
-    mentorRateWindows.set(key, { count: 1, expiresAt: now + 60_000 });
-    return next();
-  }
-  record.count += 1;
-  if (record.count > 20) {
-    res.setHeader("Retry-After", String(Math.max(1, Math.ceil((record.expiresAt - now) / 1000))));
-    return res.status(429).json({ error: { code: "RATE_LIMITED", message: "You are sending messages too quickly. Try again in a moment." } });
-  }
-  next();
-}
-function redactSensitiveMentorInput(value) {
-  return String(value || "")
-    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, "[REDACTED_EMAIL]")
-    .replace(/(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]\d{4}/g, "[REDACTED_PHONE]")
-    .replace(/\b(?:password|passphrase)\s*[:=]\s*\S+/gi, "[REDACTED_PASSWORD]")
-    .slice(0, 5000);
-}
 const planSchema = z.object({
   targetRole: z.string().trim().min(2).max(200),
   deadline: z.coerce.date().nullable().optional(),
@@ -66,11 +39,10 @@ async function performance(userId, activityRangeDays = 30) {
   const prisma = getPrisma();
   const profileId = await profileFor(userId);
   const activitySince = new Date(Date.now() - activityRangeDays * 86400000);
-  const [resume, coding, interviews, assessments, activities, skills] = await Promise.all([
+  const [resume, coding, interviews, activities, skills] = await Promise.all([
     prisma.resumeAnalysis.findMany({ where: { resumeVersion: { resume: { student: { userId } } } }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, score: true, status: true, targetRole: true, createdAt: true, findings: true } }),
     prisma.sheetProblemProgress.findMany({ where: { userId }, include: { problem: { select: { id: true, canonicalProblemId: true, difficulty: true, title: true } } } }),
     prisma.interviewSession.findMany({ where: { createdByUserId: userId, status: "COMPLETED" }, include: { evaluations: { orderBy: { createdAt: "desc" }, take: 1, select: { overallScore: true, categoryScores: true } } } }),
-    prisma.assessmentAttempt.findMany({ where: { userId, status: { in: ["GRADED", "SUBMITTED", "EXPIRED"] } }, include: { result: true, assignment: { include: { assessment: { select: { type: true, title: true } } } } } }),
     prisma.studentActivity.findMany({ where: { studentProfileId: profileId, occurredAt: { gte: activitySince } }, orderBy: { occurredAt: "desc" }, take: 500, include: { topic: { select: { name: true } } } }),
     prisma.studentSkill.findMany({ where: { studentId: profileId }, include: { skill: { select: { name: true, category: true } } } }),
   ]);
@@ -85,14 +57,10 @@ async function performance(userId, activityRangeDays = 30) {
   const codingSolved = uniqueCoding.filter((item) => ["COMPLETED", "SOLVED"].includes(item.status));
   const codingAttempted = uniqueCoding.filter((item) => item.status !== "NOT_STARTED");
   const interviewScores = interviews.flatMap((item) => item.evaluations.map((evaluation) => Number(evaluation.overallScore || 0)));
-  const assessmentScores = assessments.map((item) => Number(item.score || 0)).filter((score) => score > 0);
-  const assessmentCorrect = assessments.reduce((sum, item) => sum + (item.result?.correctCount || 0), 0);
-  const assessmentQuestions = assessments.reduce((sum, item) => sum + (item.result?.correctCount || 0) + (item.result?.incorrectCount || 0) + (item.result?.unattemptedCount || 0), 0);
   return {
     resume: { latestScore: resume[0]?.score == null ? null : Number(resume[0].score), history: resume.map((item) => ({ id: item.id, score: item.score == null ? null : Number(item.score), status: item.status, targetRole: item.targetRole, createdAt: item.createdAt, missingKeywords: item.findings?.missingKeywords || [] })) },
     coding: { attempted: codingAttempted.length, solved: codingSolved.length, inProgress: uniqueCoding.filter((item) => ["IN_PROGRESS", "ATTEMPTED", "REVISION_REQUIRED"].includes(item.status)).length, byDifficulty: codingSolved.reduce((result, item) => { result[item.problem.difficulty] = (result[item.problem.difficulty] || 0) + 1; return result; }, {}), acceptanceRate: null, submissions: codingAttempted.length },
     interviews: { completed: interviews.length, averageScore: average(interviewScores), recent: interviewScores.slice(0, 5) },
-    assessments: { attempted: assessments.length, averageScore: average(assessmentScores), accuracy: assessmentQuestions ? Math.round((assessmentCorrect / assessmentQuestions) * 100) : null, correct: assessmentCorrect, questions: assessmentQuestions },
     skills: skills.map((item) => ({ name: item.skill.name, category: item.skill.category, proficiency: item.proficiency == null ? null : Number(item.proficiency), evidenceType: item.evidenceType })),
     activityRangeDays,
     activities: activities.map((item) => ({ id: item.id, type: item.activityType, occurredAt: item.occurredAt, topic: item.topic?.name || null, metadata: item.metadata })),
@@ -138,10 +106,10 @@ router.get("/dashboard", async (req, res, next) => {
       applications,
       applicationCounts,
       upcomingInterviews,
-      assignedAssessments,
       plans,
       unreadNotifications,
       activities,
+      subjectProgress,
     ] = await Promise.all([
       performance(userId),
       prisma.resume.count({ where: { studentId: profile.id, deletedAt: null } }),
@@ -173,22 +141,21 @@ router.get("/dashboard", async (req, res, next) => {
           application: { select: { job: { select: { title: true } } } },
         },
       }),
-      prisma.assessmentAssignment.findMany({
-        where: { studentUserId: userId, status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
-        orderBy: [{ dueAt: "asc" }, { invitedAt: "desc" }],
-        take: 10,
-        select: { id: true, status: true, dueAt: true, assessment: { select: { title: true } } },
-      }),
       prisma.studyPlan.findMany({
         where: { studentProfileId: profile.id, status: "ACTIVE" },
-        select: { id: true, targetRole: true, tasks: { select: { status: true } } },
+        select: { id: true, targetRole: true, tasks: { select: { id: true, title: true, status: true, dueAt: true } } },
       }),
       prisma.notification.count({ where: { userId, readAt: null } }),
       prisma.studentActivity.findMany({
         where: { studentProfileId: profile.id, occurredAt: { gte: weekStart } },
         orderBy: { occurredAt: "desc" },
         take: 100,
-        select: { id: true, activityType: true, occurredAt: true, topic: { select: { name: true } } },
+        select: { id: true, activityType: true, occurredAt: true, metadata: true, topic: { select: { name: true } } },
+      }),
+      prisma.learningProgress.findMany({
+        where: { studentProfileId: profile.id },
+        include: { topic: { select: { id: true, subject: { select: { id: true, name: true } } } } },
+        orderBy: { lastActivityAt: "desc" },
       }),
     ]);
 
@@ -206,6 +173,49 @@ router.get("/dashboard", async (req, res, next) => {
     ];
     const applicationStatusCounts = Object.fromEntries(applicationCounts.map(({ status, _count }) => [status, _count._all]));
     const studyTasks = plans.flatMap((plan) => plan.tasks);
+    const subjectsById = new Map();
+    const seenTopics = new Set();
+    for (const progress of subjectProgress) {
+      const subject = progress.topic?.subject;
+      const topic = progress.topic;
+      if (!subject || !topic) continue;
+      const topicKey = `${subject.id}:${topic.id}`;
+      if (seenTopics.has(topicKey)) continue;
+      seenTopics.add(topicKey);
+      const card = subjectsById.get(subject.id) || {
+        id: subject.id,
+        name: subject.name,
+        completed: 0,
+        inProgress: 0,
+        lastActivityAt: progress.lastActivityAt,
+      };
+      if (progress.status === "COMPLETED") card.completed += 1;
+      else if (["IN_PROGRESS", "ATTEMPTED", "REVISION_REQUIRED"].includes(progress.status)) card.inProgress += 1;
+      if (progress.lastActivityAt > card.lastActivityAt) card.lastActivityAt = progress.lastActivityAt;
+      subjectsById.set(subject.id, card);
+    }
+    const timeline = activities.slice(0, 5).map((activity) => {
+      const labels = {
+        CODING_SUBMISSION: "Coding submission",
+        AI_INTERVIEW: "AI interview",
+        TOPIC_VIEWED: "Viewed topic",
+      };
+      const links = {
+        CODING_SUBMISSION: "/student/coding",
+        AI_INTERVIEW: "/student/interviews",
+        TOPIC_VIEWED: "/student/subjects",
+      };
+      const type = activity.activityType;
+      const baseLabel = labels[type] || type.replaceAll("_", " ").toLowerCase();
+      return {
+        id: activity.id,
+        type,
+        occurredAt: activity.occurredAt,
+        label: activity.topic?.name ? `${baseLabel}: ${activity.topic.name}` : baseLabel,
+        link: links[type],
+        meta: activity.metadata || {},
+      };
+    });
     const weeklyActivity = Array.from({ length: 7 }, (_, index) => {
       const date = new Date(weekStart);
       date.setUTCDate(weekStart.getUTCDate() + index);
@@ -233,17 +243,32 @@ router.get("/dashboard", async (req, res, next) => {
 
     res.json({
       data: {
-        profile: { name: [profile.firstName, profile.lastName].filter(Boolean).join(" "), completionPercent: Math.round(profileSignals.filter(Boolean).length * 10) },
+        profile: { name: [profile.firstName, profile.lastName].filter(Boolean).join(" "), headline: profile.headline, completionPercent: Math.round(profileSignals.filter(Boolean).length * 10) },
+        student: {
+          name: [profile.firstName, profile.lastName].filter(Boolean).join(" "),
+          headline: profile.headline,
+          profileCompletion: Math.round(profileSignals.filter(Boolean).length * 10),
+        },
+        overview: {
+          codingSolved: summary.coding.solved,
+          interviewsCompleted: summary.interviews.completed,
+          avgInterviewScore: summary.interviews.averageScore,
+          problemsAttempted: summary.coding.attempted,
+          applicationsTotal: Object.values(applicationStatusCounts).reduce((sum, count) => sum + count, 0),
+        },
         resume: { count: resumeCount, latestScore: summary.resume.latestScore },
         interviews: { completed: summary.interviews.completed, averageScore: summary.interviews.averageScore },
         applications: { recent: applications, statusCounts: applicationStatusCounts },
         upcomingInterviews,
-        assessments: { upcoming: assignedAssessments },
         studyPlan: {
           activePlans: plans.length,
           completedTasks: studyTasks.filter((task) => task.status === "COMPLETED").length,
           totalTasks: studyTasks.length,
+          tasks: studyTasks.filter((task) => task.status !== "COMPLETED"),
         },
+        timeline,
+        subjects: [...subjectsById.values()],
+        upcoming: { interviews: upcomingInterviews },
         notifications: { unread: unreadNotifications },
         weeklyActivity,
         recentActivity: activities.slice(0, 5).map((activity) => ({
@@ -266,47 +291,47 @@ router.get("/activities", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get("/resources", async (req, res, next) => {
-  try {
-    const profileId = await profileFor(req.auth.sub);
-    const resources = await getPrisma().learningResource.findMany({
-      where: {
-        status: "PUBLISHED",
-        ...(req.query.topicId ? { topicId: String(req.query.topicId) } : {}),
-        ...(req.query.subjectId ? { subjectId: String(req.query.subjectId) } : {}),
-        ...(req.query.search ? { title: { contains: String(req.query.search), mode: "insensitive" } } : {}),
-      },
-      orderBy: { title: "asc" },
-      take: 100,
-      include: {
-        topic: { select: { id: true, name: true } },
-        subject: { select: { id: true, name: true } },
-        progress: { where: { studentProfileId: profileId }, select: { status: true, percent: true, lastActivityAt: true } },
-      },
-    });
-    res.json({ data: resources });
-  } catch (error) { next(error); }
-});
-
-router.post("/resources/:id/progress", async (req, res, next) => {
-  try {
-    const input = z.object({ percent: z.number().min(0).max(100) }).parse(req.body);
-    const profileId = await profileFor(req.auth.sub);
-    const resource = await getPrisma().learningResource.findFirst({ where: { id: req.params.id, status: "PUBLISHED" } });
-    if (!resource) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resource not found." } });
-    const progress = await getPrisma().learningProgress.upsert({ where: { studentProfileId_resourceId_topicId: { studentProfileId: profileId, resourceId: resource.id, topicId: resource.topicId } }, update: { percent: input.percent, status: input.percent >= 100 ? "COMPLETED" : "IN_PROGRESS", lastActivityAt: new Date() }, create: { studentProfileId: profileId, resourceId: resource.id, topicId: resource.topicId, percent: input.percent, status: input.percent >= 100 ? "COMPLETED" : "IN_PROGRESS" } });
-    res.json({ data: progress });
-  } catch (error) { next(error); }
-});
-
 router.post("/plans", async (req, res, next) => {
   try {
     const input = planSchema.parse(req.body);
     const profileId = await profileFor(req.auth.sub);
-    const plan = await getPrisma().studyPlan.create({ data: { studentProfileId: profileId, targetRole: input.targetRole, deadline: input.deadline || null, dailyMinutes: input.dailyMinutes, goals: { create: input.goals.map((title, index) => ({ title, priority: index === 0 ? "HIGH" : "MEDIUM", status: "OPEN" })) } } });
-    const goals = await getPrisma().studyGoal.findMany({ where: { studyPlanId: plan.id }, orderBy: { id: "asc" } });
-    await getPrisma().studyTask.createMany({ data: goals.map((goal, index) => ({ studyPlanId: plan.id, goalId: goal.id, title: `Practice: ${goal.title}`, dueAt: new Date(Date.now() + (index + 1) * 86400000), priority: goal.priority, status: "OPEN", source: "STUDENT_GOAL" })) });
-    res.status(201).json({ data: await getPrisma().studyPlan.findUnique({ where: { id: plan.id }, include: { goals: true, tasks: true } }) });
+    const plan = await getPrisma().$transaction(async (tx) => {
+      const created = await tx.studyPlan.create({
+        data: {
+          studentProfileId: profileId,
+          targetRole: input.targetRole,
+          deadline: input.deadline || null,
+          dailyMinutes: input.dailyMinutes,
+          goals: {
+            create: input.goals.map((title, index) => ({
+              title,
+              priority: index === 0 ? "HIGH" : "MEDIUM",
+              status: "OPEN",
+            })),
+          },
+        },
+      });
+      const goals = await tx.studyGoal.findMany({
+        where: { studyPlanId: created.id },
+        orderBy: { id: "asc" },
+      });
+      await tx.studyTask.createMany({
+        data: goals.map((goal, index) => ({
+          studyPlanId: created.id,
+          goalId: goal.id,
+          title: `Practice: ${goal.title}`,
+          dueAt: new Date(Date.now() + (index + 1) * 86400000),
+          priority: goal.priority,
+          status: "OPEN",
+          source: "STUDENT_GOAL",
+        })),
+      });
+      return tx.studyPlan.findUnique({
+        where: { id: created.id },
+        include: { goals: true, tasks: true },
+      });
+    });
+    res.status(201).json({ data: plan });
   } catch (error) { next(error); }
 });
 
@@ -319,8 +344,46 @@ router.post("/plans/:planId/tasks/:taskId/complete", async (req, res, next) => {
     const profileId = await profileFor(req.auth.sub);
     const task = await getPrisma().studyTask.findFirst({ where: { id: req.params.taskId, studyPlanId: req.params.planId, plan: { studentProfileId: profileId } } });
     if (!task) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study task not found." } });
-    const completion = await getPrisma().studyTaskCompletion.upsert({ where: { taskId_completedByUserId: { taskId: task.id, completedByUserId: req.auth.sub } }, update: { completedAt: new Date() }, create: { taskId: task.id, completedByUserId: req.auth.sub } });
-    await getPrisma().studyTask.update({ where: { id: task.id }, data: { status: "COMPLETED" } });
+    const completion = await getPrisma().$transaction(async (tx) => {
+      const result = await tx.studyTaskCompletion.upsert({
+        where: {
+          taskId_completedByUserId: {
+            taskId: task.id,
+            completedByUserId: req.auth.sub,
+          },
+        },
+        update: { completedAt: new Date() },
+        create: { taskId: task.id, completedByUserId: req.auth.sub },
+      });
+      await tx.studyTask.update({
+        where: { id: task.id },
+        data: { status: "COMPLETED" },
+      });
+      if (task.goalId) {
+        const remainingGoalTasks = await tx.studyTask.count({
+          where: { goalId: task.goalId, status: { not: "COMPLETED" } },
+        });
+        if (remainingGoalTasks === 0) {
+          await tx.studyGoal.update({
+            where: { id: task.goalId },
+            data: { status: "COMPLETED" },
+          });
+        }
+      }
+      const remainingPlanTasks = await tx.studyTask.count({
+        where: {
+          studyPlanId: task.studyPlanId || req.params.planId,
+          status: { not: "COMPLETED" },
+        },
+      });
+      if (remainingPlanTasks === 0) {
+        await tx.studyPlan.update({
+          where: { id: task.studyPlanId || req.params.planId },
+          data: { status: "COMPLETED" },
+        });
+      }
+      return result;
+    });
     res.json({ data: completion });
   } catch (error) { next(error); }
 });
@@ -380,144 +443,4 @@ router.delete("/plans/:planId/tasks/:taskId", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-async function mentorReply(message, context, history = []) {
-  const provider = providerConfig();
-  const noProvider = provider.provider === "none"
-    || (provider.provider === "gemini" && !provider.geminiKey)
-    || (provider.provider === "openai-compatible" && (!provider.openAiUrl || !provider.openAiKey));
-  if (noProvider) return { text: `Local mentor suggestion: focus on the evidence-backed gaps in your dashboard. Start with ${context.weakestTopic || "one weak topic"} and practice a small, measurable task today.`, provider: "mock", modelAlias: "local-mentor-v1" };
-  try {
-    const recentHistory = history.slice(-10).map((item) => ({
-      role: item.role === "ASSISTANT" ? "assistant" : "user",
-      content: redactSensitiveMentorInput(item.content),
-    }));
-    const result = await generateJson(z.object({ text: z.string().min(1).max(5000) }), {
-      system: CAREER_MENTOR_SYSTEM_PROMPT,
-      maxTokens: 700,
-      messages: [
-        ...recentHistory,
-        { role: "user", content: redactSensitiveMentorInput(message) },
-      ],
-    });
-    return { text: result.output.text, provider: result.provider, modelAlias: result.modelAlias };
-  } catch (error) {
-    if (["LLM_UNAVAILABLE", "LLM_NOT_CONFIGURED"].includes(error.code)) {
-      return {
-        text: "I’m sorry, but the AI mentor is temporarily unavailable. Your message is saved; please retry in a moment.",
-        provider: "fallback",
-        modelAlias: "friendly-mentor-fallback-v1",
-      };
-    }
-    throw error;
-  }
-}
-
-router.post("/mentor/conversations", mentorRateLimit, async (req, res, next) => {
-  try {
-    const input = z.object({ message: z.string().trim().min(1).max(5000) }).parse(req.body);
-    const context = await performance(req.auth.sub);
-    const prisma = getPrisma();
-    const conversation = await prisma.aIConversation.create({
-      data: { userId: req.auth.sub, subject: input.message.slice(0, 80), topic: "Career mentor" },
-    });
-    const userMessage = await prisma.aIMessage.create({
-      data: { conversationId: conversation.id, role: "USER", content: input.message },
-    });
-    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: userMessage.createdAt } });
-    const reply = await mentorReply(input.message, { weakestTopic: context.assessments.accuracy != null && context.assessments.accuracy < 60 ? "assessment accuracy" : "consistent practice", performance: { coding: context.coding, interviews: context.interviews, assessments: context.assessments } });
-    const assistant = await prisma.aIMessage.create({ data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias } });
-    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: assistant.createdAt } });
-    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, messages: [userMessage, assistant] } });
-  } catch (error) { next(error); }
-});
-
-router.get("/mentor/conversations", async (req, res, next) => {
-  try {
-    const conversations = await getPrisma().aIConversation.findMany({
-      where: { userId: req.auth.sub },
-      orderBy: { lastMessageAt: "desc" },
-      take: 50,
-      include: { messages: { orderBy: { createdAt: "asc" }, take: 50 } },
-    });
-    res.json({ data: conversations });
-  } catch (error) { next(error); }
-});
-
-router.post("/mentor/conversations/:id/messages", mentorRateLimit, async (req, res, next) => {
-  try {
-    const input = z.object({ message: z.string().trim().min(1).max(5000) }).parse(req.body);
-    const prisma = getPrisma();
-    const conversation = await prisma.aIConversation.findFirst({ where: { id: req.params.id, userId: req.auth.sub } });
-    if (!conversation) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found." } });
-    const [context, history, userMessage] = await Promise.all([
-      performance(req.auth.sub),
-      prisma.aIMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: "asc" }, take: 10 }),
-      prisma.aIMessage.create({ data: { conversationId: conversation.id, role: "USER", content: input.message } }),
-    ]);
-    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: userMessage.createdAt } });
-    const reply = await mentorReply(input.message, {
-      weakestTopic: context.assessments.accuracy != null && context.assessments.accuracy < 60 ? "assessment accuracy" : "consistent practice",
-      performance: { coding: context.coding, interviews: context.interviews, assessments: context.assessments },
-    }, history);
-    const assistant = await prisma.aIMessage.create({
-      data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias },
-    });
-    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: assistant.createdAt } });
-    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, messages: [userMessage, assistant] } });
-  } catch (error) { next(error); }
-});
-
-router.post("/mentor/conversations/:id/retry-last", mentorRateLimit, async (req, res, next) => {
-  try {
-    const prisma = getPrisma();
-    const conversation = await prisma.aIConversation.findFirst({ where: { id: req.params.id, userId: req.auth.sub } });
-    if (!conversation) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found." } });
-    const messages = await prisma.aIMessage.findMany({
-      where: { conversationId: conversation.id },
-      orderBy: { createdAt: "desc" },
-      take: 11,
-    });
-    const lastUser = messages.find((item) => item.role === "USER");
-    if (!lastUser) return res.status(400).json({ error: { code: "NO_MESSAGE_TO_RETRY", message: "There is no answer to retry." } });
-    await prisma.aIMessage.deleteMany({
-      where: { conversationId: conversation.id, role: "ASSISTANT", createdAt: { gte: lastUser.createdAt } },
-    });
-    const history = messages.filter((item) => item.id !== lastUser.id).reverse().slice(-10);
-    const context = await performance(req.auth.sub);
-    const reply = await mentorReply(lastUser.content, {
-      weakestTopic: context.assessments.accuracy != null && context.assessments.accuracy < 60 ? "assessment accuracy" : "consistent practice",
-      performance: { coding: context.coding, interviews: context.interviews, assessments: context.assessments },
-    }, history);
-    const assistant = await prisma.aIMessage.create({
-      data: { conversationId: conversation.id, role: "ASSISTANT", content: reply.text, modelAlias: reply.modelAlias },
-    });
-    await prisma.aIConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: assistant.createdAt } });
-    res.status(201).json({ data: { id: conversation.id, provider: reply.provider, message: assistant } });
-  } catch (error) { next(error); }
-});
-
-router.patch("/mentor/conversations/:id", async (req, res, next) => {
-  try {
-    const input = z.object({ subject: z.string().trim().min(1).max(80) }).parse(req.body);
-    const updated = await getPrisma().aIConversation.updateMany({
-      where: { id: req.params.id, userId: req.auth.sub },
-      data: { subject: input.subject },
-    });
-    if (!updated.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found." } });
-    res.status(204).send();
-  } catch (error) { next(error); }
-});
-
-router.delete("/mentor/conversations/:id", async (req, res, next) => {
-  try {
-    const deleted = await getPrisma().aIConversation.deleteMany({ where: { id: req.params.id, userId: req.auth.sub } });
-    if (!deleted.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Conversation not found." } });
-    res.status(204).send();
-  } catch (error) { next(error); }
-});
-
 module.exports = router;
-module.exports.mentorReply = mentorReply;
-module.exports.mentorMessageSchema = mentorMessageSchema;
-module.exports.redactSensitiveMentorInput = redactSensitiveMentorInput;
-module.exports.CAREER_MENTOR_SYSTEM_PROMPT = CAREER_MENTOR_SYSTEM_PROMPT;

@@ -16,7 +16,7 @@
     "db:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
     "validate:links": "tsx scripts/validate-links.ts",
-    "test": "node --test backend/tests/*.test.js",
+    "test": "node --test --test-concurrency=1 backend/tests/*.test.js",
     "firebase:emulator": "firebase emulators:start --only auth --project demo-careerprepai",
     "test:e2e": "node scripts/run-e2e.js",
     "dev:all": "concurrently -n \"API,RESUME,CODING,OFFER,WEB\" -c \"blue,green,yellow,cyan,magenta\" \"npm run dev\" \"npm run worker\" \"npm run coding-worker\" \"npm run offer-worker\" \"npm --prefix frontend run dev\""

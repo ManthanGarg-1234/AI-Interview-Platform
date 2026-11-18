@@ -1,8 +1,7 @@
-import { BookOpen, ChevronRight, Clock, Code2, FileText } from "lucide-react";
+import { BookOpen, ChevronRight, Code2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, getApiError } from "../lib/api";
-import { useQuery as useProgressQuery } from "@tanstack/react-query";
 
 const SUBJECT_ICONS = {
   dsa: "🧩", "web-development": "🌐", "computer-networks": "🔗",
@@ -13,7 +12,7 @@ const SUBJECT_ICONS = {
 
 function SubjectCard({ subject, progress }) {
   const total = subject._count?.topics || 0;
-  const topicProgress = progress?.filter((p) => p.topic?.subject?.slug === subject.slug && !p.resourceId) || [];
+  const topicProgress = progress?.filter((p) => p.topic?.subject?.slug === subject.slug) || [];
   const completed = topicProgress.filter((p) => p.status === "COMPLETED").length;
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   const icon = SUBJECT_ICONS[subject.slug] || "📚";
@@ -47,9 +46,6 @@ function SubjectCard({ subject, progress }) {
         </div>
       </div>
 
-      <div className="mt-3 flex gap-3 text-xs text-slate-500">
-        {subject._count?.resources > 0 && <span className="flex items-center gap-1"><FileText size={11} />{subject._count.resources} resources</span>}
-      </div>
     </Link>
   );
 }
@@ -59,7 +55,7 @@ export default function SubjectsPage() {
     queryKey: ["subjects"],
     queryFn: async () => (await api.get("/subjects")).data.data,
   });
-  const progress = useProgressQuery({
+  const progress = useQuery({
     queryKey: ["learning-progress"],
     queryFn: async () => (await api.get("/subjects/me/progress")).data.data,
   });
@@ -91,7 +87,7 @@ export default function SubjectsPage() {
         <div className="mt-12 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center">
           <BookOpen size={36} className="text-slate-400" />
           <p className="mt-4 font-semibold text-slate-700">No subjects available yet</p>
-          <p className="mt-1 text-sm text-slate-500">An administrator can add subjects and learning content.</p>
+          <p className="mt-1 text-sm text-slate-500">An administrator can add subjects and coding paths.</p>
         </div>
       ) : (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -104,15 +100,12 @@ export default function SubjectsPage() {
       {/* Quick links */}
       <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-950 mb-4">More ways to prepare</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Link to="/student/coding" className="flex items-center gap-3 rounded-xl bg-indigo-50 p-4 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors">
             <Code2 size={18} /> DSA coding practice
           </Link>
-          <Link to="/student/assessments" className="flex items-center gap-3 rounded-xl bg-violet-50 p-4 text-sm font-semibold text-violet-700 hover:bg-violet-100 transition-colors">
-            <FileText size={18} /> Topic quizzes
-          </Link>
-          <Link to="/student/resources" className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors">
-            <BookOpen size={18} /> Resource library
+          <Link to="/student/planner" className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors">
+            <BookOpen size={18} /> Study planner
           </Link>
         </div>
       </div>

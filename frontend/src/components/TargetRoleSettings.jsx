@@ -115,8 +115,7 @@ function TargetRoleReadiness({ slug }) {
     SELF_REPORTED_ONLY: "Self-reported",
     PROFILE_EVIDENCE_ONLY: "Profile evidence (unverified)",
     MISSING_EVIDENCE: "Evidence missing",
-    MEASURED: "Assessment measured",
-    NO_ASSESSMENT_EVIDENCE: "No assessment evidence",
+    NOT_MEASURED: "Not measured",
   };
 
   return (
@@ -166,7 +165,7 @@ function TargetRoleReadiness({ slug }) {
                       {readiness.data.coreSubjects.map((subject) => (
                         <li key={subject.name} className="flex justify-between gap-2 rounded-lg bg-white p-3 text-sm">
                           <span>{subject.name}</span>
-                          <span className="text-right text-xs text-slate-500">{subject.accuracy == null ? statusLabel[subject.status] : `${subject.accuracy}% assessment accuracy · ${subject.questions} questions`}</span>
+                          <span className="text-right text-xs text-slate-500">{statusLabel[subject.status] || subject.status}</span>
                         </li>
                       ))}
                     </ul>
