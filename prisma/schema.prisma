@@ -496,6 +496,7 @@ model Education {
   fieldOfStudy      String?       @db.VarChar(160)
   startDate         DateTime?
   endDate           DateTime?
+  graduationYear    Int?
   grade             Decimal?      @db.Decimal(5, 2)
   student           StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   createdAt         DateTime      @default(now())

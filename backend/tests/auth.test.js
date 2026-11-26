@@ -288,6 +288,11 @@ test("student dashboard reports caller-owned profile and recorded activity data"
   assert.equal(result.data.profile.completionPercent, 10);
   assert.equal(result.data.student.name, "Dashboard Student");
   assert.equal(result.data.student.profileCompletion, 10);
+  assert.equal(result.data.readiness.status, "NOT_CALCULATED");
+  assert.equal(result.data.readiness.score, null);
+  assert.equal(result.data.dailyStudy.streakDays, 1);
+  assert.equal(result.data.dailyStudy.trackedMinutes, 0);
+  assert.equal(result.data.resume.latest, null);
   assert.equal(result.data.overview.applicationsTotal, 0);
   assert.equal(result.data.overview.codingSolved, 0);
   assert.deepEqual(result.data.upcoming.interviews, []);
@@ -301,6 +306,62 @@ test("student dashboard reports caller-owned profile and recorded activity data"
       (item) => item.href === "/student/profile",
     ),
   );
+});
+
+test("student profile validation, auditing, and education access remain owner scoped", async () => {
+  const owner = await seedUser();
+  const other = await seedUser();
+  const prisma = getPrisma();
+  const ownerProfile = await prisma.studentProfile.create({ data: { userId: owner.id, firstName: "Owner", lastName: "Student" } });
+  await prisma.studentProfile.create({ data: { userId: other.id, firstName: "Other", lastName: "Student" } });
+  const education = await prisma.education.create({ data: { studentId: ownerProfile.id, institution: "Example University", degree: "BSc", graduationYear: 2027, grade: 8.5 } });
+  const ownerSession = await loginUser(owner);
+  const otherSession = await loginUser(other);
+  const invalid = await request("/me/profile", { ...authenticatedOptions(ownerSession.cookie, "PATCH"), body: { firstName: "Owner", lastName: "Student", githubUrl: "http://example.com" } });
+  assert.equal(invalid.status, 400, await invalid.text());
+  const saved = await request("/me/profile", { ...authenticatedOptions(ownerSession.cookie, "PATCH"), body: { firstName: "Owner", lastName: "Updated", profileImageUrl: "https://images.example.test/profile.png" } });
+  assert.equal(saved.status, 200);
+  assert.equal((await prisma.user.findUnique({ where: { id: owner.id }, select: { profileImageUrl: true } })).profileImageUrl, "https://images.example.test/profile.png");
+  assert.equal(await prisma.auditLog.count({ where: { actorUserId: owner.id, action: "STUDENT_PROFILE_UPDATED" } }), 1);
+  const hidden = await request(`/me/education/${education.id}`, { ...authenticatedOptions(otherSession.cookie, "PATCH"), body: { institution: "Intrusion" } });
+  assert.equal(hidden.status, 404);
+  assert.equal((await prisma.education.findUnique({ where: { id: education.id } })).institution, "Example University");
+});
+
+test("resume uploads validate file signatures and private downloads enforce ownership and scan state", async () => {
+  const owner = await seedUser();
+  const other = await seedUser();
+  await getPrisma().studentProfile.create({ data: { userId: owner.id, firstName: "Resume", lastName: "Owner" } });
+  await getPrisma().studentProfile.create({ data: { userId: other.id, firstName: "Other", lastName: "Student" } });
+  const ownerSession = await loginUser(owner);
+  const otherSession = await loginUser(other);
+  async function uploadResume(bytes) {
+    const form = new FormData();
+    form.set("title", "Private resume");
+    form.set("file", new Blob([bytes], { type: "application/pdf" }), "resume.pdf");
+    return fetch(`${origin}/api/v1/me/resumes`, { method: "POST", headers: { origin: frontendOrigin, cookie: ownerSession.cookie, "x-csrf-token": readCookie(ownerSession.cookie, "career_csrf") }, body: form });
+  }
+  const invalid = await uploadResume("not a PDF");
+  assert.equal(invalid.status, 400);
+  const uploaded = await uploadResume("%PDF-1.7\nresume fixture\n");
+  assert.equal(uploaded.status, 201);
+  const resume = (await uploaded.json()).data;
+  const versionId = resume.activeVersionId;
+  const storedVersion = await getPrisma().resumeVersion.findUnique({ where: { id: versionId }, include: { file: true } });
+  assert.equal(storedVersion.file.ownerUserId, owner.id);
+  assert.equal(storedVersion.file.originalName, "resume.pdf");
+  assert.ok(storedVersion.file.objectKey.startsWith(`resumes/${owner.id}/`));
+  const pending = await request(`/me/resume-versions/${versionId}/download`, authenticatedOptions(ownerSession.cookie));
+  assert.equal(pending.status, 404);
+  await getPrisma().storedFile.update({ where: { id: resume.activeVersion.fileId }, data: { scanStatus: "CLEAN" } });
+  const denied = await request(`/me/resume-versions/${versionId}/download`, authenticatedOptions(otherSession.cookie));
+  assert.equal(denied.status, 404);
+  const allowed = await request(`/me/resume-versions/${versionId}/download?preview=true`, authenticatedOptions(ownerSession.cookie));
+  assert.equal(allowed.status, 200);
+  assert.match(allowed.headers.get("content-disposition"), /^inline;/);
+  assert.equal(allowed.headers.get("cache-control"), "private, no-store");
+  const removed = await request(`/me/resumes/${resume.id}`, authenticatedOptions(ownerSession.cookie, "DELETE"));
+  assert.equal(removed.status, 204);
 });
 
 test("placement sheets use external URLs and persist manual progress", async () => {

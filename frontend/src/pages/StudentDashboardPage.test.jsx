@@ -26,6 +26,10 @@ describe("StudentDashboardPage", () => {
           },
           upcomingInterviews: [],
           studyPlan: { activePlans: 0, completedTasks: 0, totalTasks: 0, tasks: [] },
+          dailyStudy: { streakDays: 2, trackedMinutes: 25, goalMinutes: 40, completedTasks: 1 },
+          readiness: { score: null, status: "NOT_CALCULATED", calculatedAt: null },
+          preparation: { weakTopics: [{ id: "topic-1", name: "Joins", subject: "DBMS", percent: 20 }] },
+          resume: { count: 1, latest: { id: "resume-1", title: "Resume", scanStatus: "CLEAN", version: 2 } },
           timeline: [],
           subjects: [],
           upcoming: { interviews: [] },
@@ -45,6 +49,11 @@ describe("StudentDashboardPage", () => {
     expect(await screen.findByRole("heading", { name: /Good (morning|afternoon|evening), Ada/ })).toBeTruthy();
     expect(screen.getByText("Applications")).toBeTruthy();
     expect(screen.getByText("Problems solved")).toBeTruthy();
+    expect(screen.getByText("2 days")).toBeTruthy();
+    expect(screen.getByText("25 min")).toBeTruthy();
+    expect(screen.getByText("Not calculated")).toBeTruthy();
+    expect(screen.getByText(/Joins/)).toBeTruthy();
+    expect(screen.getByText(/CLEAN · version 2/)).toBeTruthy();
     expect(await screen.findByText("No activity yet")).toBeTruthy();
     expect(screen.getByText("No subjects started")).toBeTruthy();
     expect(screen.getByText("Nothing scheduled")).toBeTruthy();

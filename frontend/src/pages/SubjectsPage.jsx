@@ -7,7 +7,7 @@ const SUBJECT_ICONS = {
   dsa: "🧩", "web-development": "🌐", "computer-networks": "🔗",
   "operating-systems": "💻", linux: "🐧", dbms: "🗄️", sql: "📊",
   "system-design": "🏗️", oop: "📦", java: "☕", aptitude: "🧮",
-  communication: "🗣️", hr: "🤝", git: "🔧",
+  communication: "🗣️", "communication-skills": "🗣️", "logical-reasoning": "🧠", "c-cpp": "⚙️", python: "🐍", hr: "🤝", git: "🔧",
 };
 
 function SubjectCard({ subject, progress }) {

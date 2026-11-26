@@ -41,6 +41,16 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(null, ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(file.mimetype)),
 });
+function validResumePayload(file) {
+  if (!file) return false;
+  const extension = path.extname(file.originalname).toLowerCase();
+  if (file.mimetype === "application/pdf") return extension === ".pdf" && file.buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+  if (file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return extension === ".docx" && file.buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+      && file.buffer.includes(Buffer.from("[Content_Types].xml")) && file.buffer.includes(Buffer.from("word/document.xml"));
+  }
+  return false;
+}
 router.use(express.json({ limit: "256kb" }));
 router.use(csrfProtection);
 router.get("/health", async (_req, res) => {
@@ -107,14 +117,26 @@ router.get("/auth/sessions", authenticate, authHandler(listSessions));
 router.delete("/auth/sessions/:sessionId", authenticate, authHandler(revokeSession));
 router.get("/auth/me", authenticate, (req, res) => res.json({ data: publicUser(req.user) }));
 router.get("/me/profile", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try { const profile = await getPrisma().studentProfile.findUnique({ where: { userId: req.auth.sub }, include: { skills: true, educations: true, projects: true } }); res.json({ data: profile }); }
+  try { const profile = await getPrisma().studentProfile.findUnique({ where: { userId: req.auth.sub }, include: { skills: { include: { skill: true } }, educations: true, projects: true, experiences: true, certifications: true, user: { select: { profileImageUrl: true } } } }); res.json({ data: profile }); }
   catch (error) { next(error); }
 });
 router.patch("/me/profile", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try {
     const url = z.string().url().max(500).nullable().optional();
-    const data = z.object({ firstName: z.string().trim().min(1).max(100), lastName: z.string().trim().min(1).max(100), phone: z.string().trim().max(32).nullable().optional(), headline: z.string().trim().max(180).nullable().optional(), bio: z.string().trim().max(5000).nullable().optional(), location: z.string().trim().max(160).nullable().optional(), githubUrl: url, linkedinUrl: url, portfolioUrl: url, discoverable: z.boolean().optional() }).parse(req.body);
-    const profile = await getPrisma().studentProfile.update({ where: { userId: req.auth.sub }, data });
+    const imageUrl = z.string().url().max(2048).refine((value) => new URL(value).protocol === "https:", "Profile picture URL must use HTTPS.").nullable().optional();
+    const secureUrl = url.refine((value) => value == null || new URL(value).protocol === "https:", "URL must use HTTPS.");
+    const data = z.object({ firstName: z.string().trim().min(1).max(100), lastName: z.string().trim().min(1).max(100), phone: z.string().trim().max(32).nullable().optional(), headline: z.string().trim().max(180).nullable().optional(), bio: z.string().trim().max(5000).nullable().optional(), location: z.string().trim().max(160).nullable().optional(), githubUrl: secureUrl, linkedinUrl: secureUrl, portfolioUrl: secureUrl, profileImageUrl: imageUrl, discoverable: z.boolean().optional() }).parse(req.body);
+    const prisma = getPrisma();
+    const { profileImageUrl, ...profileData } = data;
+    const profile = await prisma.$transaction(async (tx) => {
+      const current = await tx.studentProfile.findUnique({ where: { userId: req.auth.sub }, select: { id: true, firstName: true, lastName: true, headline: true, discoverable: true } });
+      if (!current) throw Object.assign(new Error("Student profile was not found."), { status: 404, code: "PROFILE_NOT_FOUND" });
+      const updated = await tx.studentProfile.update({ where: { userId: req.auth.sub }, data: profileData });
+      if (profileImageUrl !== undefined) await tx.user.update({ where: { id: req.auth.sub }, data: { profileImageUrl } });
+      await tx.auditLog.create({ data: { actorUserId: req.auth.sub, createdByUserId: req.auth.sub, action: "STUDENT_PROFILE_UPDATED", resourceType: "STUDENT_PROFILE", resourceId: current.id, before: { firstName: current.firstName, lastName: current.lastName, headline: current.headline, discoverable: current.discoverable }, after: { firstName: updated.firstName, lastName: updated.lastName, headline: updated.headline, discoverable: updated.discoverable, profileImageUpdated: profileImageUrl !== undefined }, requestId: req.requestId || "student-profile-update", ipAddress: req.ip } });
+      await tx.studentActivity.create({ data: { studentProfileId: current.id, activityType: "PROFILE_UPDATED", metadata: {} } });
+      return updated;
+    });
     res.json({ data: profile });
   } catch (error) { next(error); }
 });
@@ -186,7 +208,7 @@ router.post("/me/offers/:id/respond", authenticate, requireRole("STUDENT"), asyn
 });
 
 const profileSections = {
-  education: { model: "education", schema: z.object({ institution: z.string().trim().min(1).max(200), degree: z.string().trim().max(160).nullable().optional(), fieldOfStudy: z.string().trim().max(160).nullable().optional(), startDate: z.coerce.date().nullable().optional(), endDate: z.coerce.date().nullable().optional(), grade: z.coerce.number().min(0).max(100).nullable().optional() }) },
+  education: { model: "education", schema: z.object({ institution: z.string().trim().min(1).max(200), degree: z.string().trim().max(160).nullable().optional(), fieldOfStudy: z.string().trim().max(160).nullable().optional(), startDate: z.coerce.date().nullable().optional(), endDate: z.coerce.date().nullable().optional(), graduationYear: z.coerce.number().int().min(1950).max(2200).nullable().optional(), grade: z.coerce.number().min(0).max(100).nullable().optional() }) },
   projects: { model: "project", schema: z.object({ name: z.string().trim().min(1).max(200), description: z.string().trim().max(5000).nullable().optional(), url: z.string().url().max(500).nullable().optional(), repositoryUrl: z.string().url().max(500).nullable().optional(), technologies: z.array(z.string().trim().min(1).max(80)).max(50).optional() }) },
   experience: { model: "experience", schema: z.object({ organization: z.string().trim().min(1).max(200), title: z.string().trim().min(1).max(160), description: z.string().trim().max(5000).nullable().optional(), startDate: z.coerce.date().nullable().optional(), endDate: z.coerce.date().nullable().optional() }) },
   certifications: { model: "certification", schema: z.object({ name: z.string().trim().min(1).max(200), issuer: z.string().trim().max(200).nullable().optional(), credentialUrl: z.string().url().max(500).nullable().optional(), issuedAt: z.coerce.date().nullable().optional(), expiresAt: z.coerce.date().nullable().optional() }) },
@@ -196,23 +218,31 @@ async function profileId(userId) {
   if (!profile) { const error = new Error("Student profile was not found."); error.status = 404; throw error; }
   return profile.id;
 }
+async function recordStudentMutation(req, action, resourceType, resourceId, after = {}) {
+  const prisma = getPrisma();
+  const studentId = await profileId(req.auth.sub);
+  await prisma.$transaction([
+    prisma.auditLog.create({ data: { actorUserId: req.auth.sub, createdByUserId: req.auth.sub, action, resourceType, resourceId, after, requestId: req.requestId || `student-${action.toLowerCase()}`, ipAddress: req.ip } }),
+    prisma.studentActivity.create({ data: { studentProfileId: studentId, activityType: action, sourceId: resourceId || undefined, metadata: after } }),
+  ]);
+}
 for (const [section, config] of Object.entries(profileSections)) {
   router.get(`/me/${section}`, authenticate, requireRole("STUDENT"), async (req, res, next) => {
     try { res.json({ data: await getPrisma()[config.model].findMany({ where: { studentId: await profileId(req.auth.sub) }, orderBy: { createdAt: "desc" } }) }); } catch (error) { next(error); }
   });
   router.post(`/me/${section}`, authenticate, requireRole("STUDENT"), async (req, res, next) => {
-    try { res.status(201).json({ data: await getPrisma()[config.model].create({ data: { ...config.schema.parse(req.body), studentId: await profileId(req.auth.sub) } }) }); } catch (error) { next(error); }
+    try { const created = await getPrisma()[config.model].create({ data: { ...config.schema.parse(req.body), studentId: await profileId(req.auth.sub) } }); await recordStudentMutation(req, `STUDENT_${section.toUpperCase()}_CREATED`, section.toUpperCase(), created.id); res.status(201).json({ data: created }); } catch (error) { next(error); }
   });
   router.patch(`/me/${section}/:id`, authenticate, requireRole("STUDENT"), async (req, res, next) => {
     try {
       const studentId = await profileId(req.auth.sub);
       const existing = await getPrisma()[config.model].findFirst({ where: { id: req.params.id, studentId } });
       if (!existing) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Entry not found." } });
-      res.json({ data: await getPrisma()[config.model].update({ where: { id: existing.id }, data: config.schema.parse(req.body) }) });
+      const updated = await getPrisma()[config.model].update({ where: { id: existing.id }, data: config.schema.parse(req.body) }); await recordStudentMutation(req, `STUDENT_${section.toUpperCase()}_UPDATED`, section.toUpperCase(), existing.id); res.json({ data: updated });
     } catch (error) { next(error); }
   });
   router.delete(`/me/${section}/:id`, authenticate, requireRole("STUDENT"), async (req, res, next) => {
-    try { const deleted = await getPrisma()[config.model].deleteMany({ where: { id: req.params.id, studentId: await profileId(req.auth.sub) } }); if (!deleted.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Entry not found." } }); res.status(204).send(); } catch (error) { next(error); }
+    try { const deleted = await getPrisma()[config.model].deleteMany({ where: { id: req.params.id, studentId: await profileId(req.auth.sub) } }); if (!deleted.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Entry not found." } }); await recordStudentMutation(req, `STUDENT_${section.toUpperCase()}_DELETED`, section.toUpperCase(), req.params.id); res.status(204).send(); } catch (error) { next(error); }
   });
 }
 router.get("/me/skills", authenticate, requireRole("STUDENT"), async (req, res, next) => {
@@ -224,22 +254,23 @@ router.post("/me/skills", authenticate, requireRole("STUDENT"), async (req, res,
     const prisma = getPrisma(); const studentId = await profileId(req.auth.sub);
     const skill = await prisma.skill.upsert({ where: { name: input.name }, update: { category: input.category }, create: { name: input.name, category: input.category } });
     const data = await prisma.studentSkill.create({ data: { studentId, skillId: skill.id, evidenceType: input.evidenceType, proficiency: input.proficiency }, include: { skill: true } });
+    await recordStudentMutation(req, "STUDENT_SKILL_ADDED", "STUDENT_SKILL", data.id, { skill: data.skill.name });
     res.status(201).json({ data });
   } catch (error) { next(error); }
 });
 router.delete("/me/skills/:id", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try { const deleted = await getPrisma().studentSkill.deleteMany({ where: { id: req.params.id, studentId: await profileId(req.auth.sub) } }); if (!deleted.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Skill not found." } }); res.status(204).send(); } catch (error) { next(error); }
+  try { const deleted = await getPrisma().studentSkill.deleteMany({ where: { id: req.params.id, studentId: await profileId(req.auth.sub) } }); if (!deleted.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Skill not found." } }); await recordStudentMutation(req, "STUDENT_SKILL_REMOVED", "STUDENT_SKILL", req.params.id); res.status(204).send(); } catch (error) { next(error); }
 });
 router.get("/me/resumes", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try {
     const profile = await getPrisma().studentProfile.findUnique({ where: { userId: req.auth.sub }, select: { id: true } });
-    const resumes = await getPrisma().resume.findMany({ where: { studentId: profile.id, deletedAt: null }, include: { activeVersion: { include: { file: { select: { originalName: true, mimeType: true, sizeBytes: true, scanStatus: true } } } }, versions: { include: { file: { select: { id: true, originalName: true, scanStatus: true, sizeBytes: true } } }, orderBy: { version: "desc" } } }, orderBy: { updatedAt: "desc" } });
+    const resumes = await getPrisma().resume.findMany({ where: { studentId: profile.id, deletedAt: null }, include: { activeVersion: { include: { file: { select: { originalName: true, mimeType: true, sizeBytes: true, scanStatus: true } } } }, versions: { include: { file: { select: { id: true, originalName: true, mimeType: true, scanStatus: true, sizeBytes: true } } }, orderBy: { version: "desc" } } }, orderBy: { updatedAt: "desc" } });
     res.json({ data: resumes });
   } catch (error) { next(error); }
 });
 router.post("/me/resumes", authenticate, requireRole("STUDENT"), upload.single("file"), async (req, res, next) => {
   try {
-    if (!req.file) return res.status(400).json({ error: { code: "INVALID_FILE", message: "A PDF or DOCX resume up to 5 MB is required." } });
+    if (!validResumePayload(req.file)) return res.status(400).json({ error: { code: "INVALID_FILE", message: "Upload a valid PDF or DOCX resume up to 5 MB." } });
     const title = z.string().trim().min(1).max(200).parse(req.body.title || req.file.originalname);
     const prisma = getPrisma();
     const profile = await prisma.studentProfile.findUnique({ where: { userId: req.auth.sub }, select: { id: true } });
@@ -258,6 +289,7 @@ router.post("/me/resumes", authenticate, requireRole("STUDENT"), upload.single("
       return tx.resume.update({ where: { id: target.id }, data: { title, activeVersionId: version.id }, include: { activeVersion: { include: { file: true } } } });
     });
     await enqueueResumeProcessing(resume.activeVersionId);
+    await recordStudentMutation(req, "STUDENT_RESUME_UPLOADED", "RESUME", resume.id, { versionId: resume.activeVersionId });
     res.status(201).json({ data: resume });
   } catch (error) { next(error); }
 });
@@ -265,10 +297,10 @@ router.patch("/me/resumes/:id/active", authenticate, requireRole("STUDENT"), asy
   try { const version = await getPrisma().resumeVersion.findFirst({ where: { id: req.params.id, resume: { studentId: await profileId(req.auth.sub), deletedAt: null }, file: { scanStatus: "CLEAN", deletedAt: null } } }); if (!version) return res.status(404).json({ error: { code: "VERSION_NOT_AVAILABLE", message: "Resume version is unavailable or has not passed scanning." } }); res.json({ data: await getPrisma().resume.update({ where: { id: version.resumeId }, data: { activeVersionId: version.id } }) }); } catch (error) { next(error); }
 });
 router.delete("/me/resumes/:id", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try { const resume = await getPrisma().resume.findFirst({ where: { id: req.params.id, studentId: await profileId(req.auth.sub), deletedAt: null }, include: { versions: { include: { file: true } } } }); if (!resume) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resume not found." } }); await getPrisma().resume.update({ where: { id: resume.id }, data: { deletedAt: new Date(), activeVersionId: null } }); await Promise.all(resume.versions.map((version) => storage.remove(version.file.objectKey))); await getPrisma().storedFile.updateMany({ where: { id: { in: resume.versions.map((version) => version.fileId) } }, data: { deletedAt: new Date(), scanStatus: "DELETED" } }); res.status(204).send(); } catch (error) { next(error); }
+  try { const resume = await getPrisma().resume.findFirst({ where: { id: req.params.id, studentId: await profileId(req.auth.sub), deletedAt: null }, include: { versions: { include: { file: true } } } }); if (!resume) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resume not found." } }); await getPrisma().resume.update({ where: { id: resume.id }, data: { deletedAt: new Date(), activeVersionId: null } }); await Promise.all(resume.versions.map((version) => storage.remove(version.file.objectKey))); await getPrisma().storedFile.updateMany({ where: { id: { in: resume.versions.map((version) => version.fileId) } }, data: { deletedAt: new Date(), scanStatus: "DELETED" } }); await recordStudentMutation(req, "STUDENT_RESUME_DELETED", "RESUME", resume.id); res.status(204).send(); } catch (error) { next(error); }
 });
 router.get("/me/resume-versions/:id/download", authenticate, requireRole("STUDENT"), async (req, res, next) => {
-  try { const version = await getPrisma().resumeVersion.findFirst({ where: { id: req.params.id, resume: { studentId: await profileId(req.auth.sub), deletedAt: null }, file: { scanStatus: "CLEAN", deletedAt: null } }, include: { file: true } }); if (!version) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resume file is unavailable." } }); const buffer = await storage.get(version.file.objectKey); res.set({ "Content-Type": version.file.mimeType, "Content-Disposition": `attachment; filename="${version.file.originalName.replace(/["\r\n]/g, "")}"`, "Cache-Control": "private, no-store" }).send(buffer); } catch (error) { next(error); }
+  try { const version = await getPrisma().resumeVersion.findFirst({ where: { id: req.params.id, resume: { studentId: await profileId(req.auth.sub), deletedAt: null }, file: { scanStatus: "CLEAN", deletedAt: null } }, include: { file: true } }); if (!version) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Resume file is unavailable." } }); const buffer = await storage.get(version.file.objectKey); const preview = req.query.preview === "true" && version.file.mimeType === "application/pdf"; const disposition = preview ? "inline" : "attachment"; res.set({ "Content-Type": version.file.mimeType, "Content-Disposition": `${disposition}; filename="${version.file.originalName.replace(/["\r\n]/g, "")}"`, "Cache-Control": "private, no-store", "Content-Security-Policy": "sandbox", "Cross-Origin-Resource-Policy": "same-origin", "X-Content-Type-Options": "nosniff" }).send(buffer); } catch (error) { next(error); }
 });
 router.post("/me/resume-analyses", authenticate, requireRole("STUDENT"), async (req, res, next) => {
   try {

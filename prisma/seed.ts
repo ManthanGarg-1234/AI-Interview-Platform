@@ -276,10 +276,24 @@ async function seedSheets(): Promise<void> {
   );
 }
 
+async function seedPreparationSubjects(): Promise<void> {
+  const catalogue = [
+    ["DSA", "dsa"], ["DBMS", "dbms"], ["Operating Systems", "operating-systems"],
+    ["Computer Networks", "computer-networks"], ["OOP", "oop"], ["Java", "java"],
+    ["C/C++", "c-cpp"], ["Python", "python"], ["Web Development", "web-development"],
+    ["System Design", "system-design"], ["Aptitude", "aptitude"],
+    ["Logical Reasoning", "logical-reasoning"], ["Communication Skills", "communication-skills"],
+  ];
+  for (const [name, slug] of catalogue) {
+    await prisma.subject.upsert({ where: { slug }, update: { name, status: "PUBLISHED" }, create: { name, slug, status: "PUBLISHED" } });
+  }
+}
+
 async function main(): Promise<void> {
   try {
     await seedCodingProblems();
     await seedSheets();
+    await seedPreparationSubjects();
   } finally {
     await prisma.$disconnect();
   }

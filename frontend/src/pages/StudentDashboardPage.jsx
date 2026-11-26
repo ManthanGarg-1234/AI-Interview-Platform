@@ -125,7 +125,7 @@ function ActivityEntry({ item }) {
 // ─── Subject progress card ────────────────────────────────────────────────────
 
 function SubjectCard({ subject }) {
-  const total = subject.completed + subject.inProgress;
+  const total = subject.totalTopics || subject.completed + subject.inProgress;
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="flex items-center justify-between gap-2">
@@ -275,6 +275,25 @@ export default function StudentDashboardPage() {
         </div>
       </section>
 
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-bold text-slate-700">Study streak</p>
+          <p className="mt-2 text-3xl font-black text-indigo-700">{loading ? "—" : `${d?.dailyStudy?.streakDays ?? 0} days`}</p>
+          <p className="mt-1 text-xs text-slate-500">Based on recorded learning activity</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-bold text-slate-700">Today's study</p>
+          <p className="mt-2 text-3xl font-black text-emerald-700">{loading ? "—" : `${d?.dailyStudy?.trackedMinutes ?? 0} min`}</p>
+          <p className="mt-1 text-xs text-slate-500">{d?.dailyStudy?.goalMinutes ? `${d.dailyStudy.goalMinutes} min plan goal · ` : "No time goal set · "}{d?.dailyStudy?.completedTasks ?? 0} planned tasks completed</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-bold text-slate-700">Placement readiness</p>
+          <p className="mt-2 text-3xl font-black text-violet-700">{loading ? "—" : d?.readiness?.score == null ? "Not calculated" : `${Math.round(d.readiness.score)}%`}</p>
+          <p className="mt-1 text-xs text-slate-500">{d?.readiness?.calculatedAt ? `Updated ${new Date(d.readiness.calculatedAt).toLocaleDateString()}` : "No saved readiness score is available."}</p>
+          <Link to="/student/profile#target-roles" className="mt-2 inline-block text-xs font-bold text-indigo-700">Review profile and role evidence →</Link>
+        </div>
+      </section>
+
       {/* ── Three-column content grid ─────────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-3">
 
@@ -304,6 +323,18 @@ export default function StudentDashboardPage() {
                 />
               )}
             </div>
+          </section>
+
+          {/* Subject-wise progress */}
+          <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-6">
+            <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-950">Topics to revisit</h2><p className="mt-1 text-xs text-slate-500">Based on your saved learning progress</p></div><Link to="/student/subjects" className="text-sm font-bold text-indigo-600">View subjects</Link></div>
+            {loading ? <Skeleton className="mt-4 h-14" /> : d?.preparation?.weakTopics?.length ? <div className="mt-4 space-y-2">{d.preparation.weakTopics.map((topic) => <Link key={topic.id} to="/student/subjects" className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 text-sm"><span className="font-semibold text-slate-800">{topic.name}<span className="ml-2 text-xs text-slate-500">{topic.subject}</span></span><span className="text-xs font-bold text-amber-700">{Math.round(topic.percent)}% · revisit</span></Link>)}</div> : <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-500">No topics are currently marked for revision.</p>}
+          </section>
+
+          {/* Resume status */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-950">Resume</h2><p className="mt-1 text-xs text-slate-500">Private file status</p></div><Link to="/student/profile" className="text-sm font-bold text-indigo-600">Manage</Link></div>
+            {loading ? <Skeleton className="mt-4 h-14" /> : d?.resume?.latest ? <div className="mt-4 rounded-xl bg-slate-50 p-4"><p className="font-semibold text-slate-800">{d.resume.latest.title}</p><p className="mt-1 text-sm text-slate-500">{d.resume.latest.scanStatus.replaceAll("_", " ")}{d.resume.latest.version ? ` · version ${d.resume.latest.version}` : ""}</p></div> : <EmptyState icon={BriefcaseBusiness} title="No resume uploaded" description="Add a resume to keep your application materials ready." action="/student/profile" actionLabel="Upload resume" />}
           </section>
 
           {/* Subject-wise progress */}

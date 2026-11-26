@@ -5,6 +5,8 @@ const { z } = require("zod");
 const { getPrisma } = require("./prisma");
 
 const router = express.Router();
+const MS_DAY = 86400000;
+
 const planSchema = z.object({
   targetRole: z.string().trim().min(2).max(200),
   deadline: z.coerce.date().nullable().optional(),
@@ -24,9 +26,24 @@ const taskUpdateSchema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
   status: z.enum(["OPEN", "IN_PROGRESS", "COMPLETED"]).optional(),
 }).refine((value) => Object.keys(value).length > 0, "At least one task field must be provided.");
+const performanceQuerySchema = z.object({ range: z.enum(["7", "30", "90"]).default("30") });
+// Minutes ahead of UTC for the client's timezone (IST = 330). Defaults to UTC.
+const dashboardQuerySchema = z.object({ tzOffsetMinutes: z.coerce.number().int().min(-840).max(840).default(0) });
+const activitiesQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
 
 function average(values) {
   return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+}
+
+// YYYY-MM-DD of a moment as seen in a timezone offset (minutes ahead of UTC).
+function dayKey(date, offsetMinutes) {
+  return new Date(date.getTime() + offsetMinutes * 60000).toISOString().slice(0, 10);
+}
+
+// The UTC instant at which the local day containing `now` began.
+function localDayStart(now, offsetMinutes) {
+  const local = new Date(now.getTime() + offsetMinutes * 60000);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - offsetMinutes * 60000);
 }
 
 async function profileFor(userId) {
@@ -35,10 +52,30 @@ async function profileFor(userId) {
   return profile.id;
 }
 
-async function performance(userId, activityRangeDays = 30) {
+// Keeps goal and plan status consistent with their tasks, in both directions.
+async function syncCompletionState(tx, planId, goalId) {
+  if (goalId) {
+    const total = await tx.studyTask.count({ where: { goalId } });
+    const remaining = await tx.studyTask.count({ where: { goalId, status: { not: "COMPLETED" } } });
+    if (total > 0 && remaining === 0) {
+      await tx.studyGoal.updateMany({ where: { id: goalId, status: { not: "COMPLETED" } }, data: { status: "COMPLETED" } });
+    } else {
+      await tx.studyGoal.updateMany({ where: { id: goalId, status: "COMPLETED" }, data: { status: "OPEN" } });
+    }
+  }
+  const total = await tx.studyTask.count({ where: { studyPlanId: planId } });
+  const remaining = await tx.studyTask.count({ where: { studyPlanId: planId, status: { not: "COMPLETED" } } });
+  if (total > 0 && remaining === 0) {
+    await tx.studyPlan.updateMany({ where: { id: planId, status: "ACTIVE" }, data: { status: "COMPLETED" } });
+  } else {
+    await tx.studyPlan.updateMany({ where: { id: planId, status: "COMPLETED" }, data: { status: "ACTIVE" } });
+  }
+}
+
+async function performance(userId, activityRangeDays = 30, knownProfileId = null) {
   const prisma = getPrisma();
-  const profileId = await profileFor(userId);
-  const activitySince = new Date(Date.now() - activityRangeDays * 86400000);
+  const profileId = knownProfileId || await profileFor(userId);
+  const activitySince = new Date(Date.now() - activityRangeDays * MS_DAY);
   const [resume, coding, interviews, activities, skills] = await Promise.all([
     prisma.resumeAnalysis.findMany({ where: { resumeVersion: { resume: { student: { userId } } } }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, score: true, status: true, targetRole: true, createdAt: true, findings: true } }),
     prisma.sheetProblemProgress.findMany({ where: { userId }, include: { problem: { select: { id: true, canonicalProblemId: true, difficulty: true, title: true } } } }),
@@ -69,7 +106,7 @@ async function performance(userId, activityRangeDays = 30) {
 
 router.get("/performance", async (req, res, next) => {
   try {
-    const { range } = z.object({ range: z.enum(["7", "30", "90"]).default("30") }).parse(req.query);
+    const { range } = performanceQuerySchema.parse(req.query);
     res.json({ data: await performance(req.auth.sub, Number(range)) });
   } catch (error) { next(error); }
 });
@@ -78,10 +115,10 @@ router.get("/dashboard", async (req, res, next) => {
   try {
     const prisma = getPrisma();
     const userId = req.auth.sub;
+    const { tzOffsetMinutes } = dashboardQuerySchema.parse(req.query);
     const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setUTCHours(0, 0, 0, 0);
-    weekStart.setUTCDate(weekStart.getUTCDate() - 6);
+    const todayStart = localDayStart(now, tzOffsetMinutes);
+    const weekStart = new Date(todayStart.getTime() - 6 * MS_DAY);
     const profile = await prisma.studentProfile.findUnique({
       where: { userId },
       select: {
@@ -95,6 +132,9 @@ router.get("/dashboard", async (req, res, next) => {
         githubUrl: true,
         linkedinUrl: true,
         portfolioUrl: true,
+        readinessScore: true,
+        readinessFormulaVersion: true,
+        readinessCalculatedAt: true,
         _count: { select: { educations: true, skills: true, projects: true, experiences: true, certifications: true } },
       },
     });
@@ -110,8 +150,10 @@ router.get("/dashboard", async (req, res, next) => {
       unreadNotifications,
       activities,
       subjectProgress,
+      latestResume,
+      todayCompletions,
     ] = await Promise.all([
-      performance(userId),
+      performance(userId, 30, profile.id),
       prisma.resume.count({ where: { studentId: profile.id, deletedAt: null } }),
       prisma.application.findMany({
         where: { studentUserId: userId },
@@ -143,20 +185,30 @@ router.get("/dashboard", async (req, res, next) => {
       }),
       prisma.studyPlan.findMany({
         where: { studentProfileId: profile.id, status: "ACTIVE" },
-        select: { id: true, targetRole: true, tasks: { select: { id: true, title: true, status: true, dueAt: true } } },
+        select: { id: true, targetRole: true, dailyMinutes: true, tasks: { select: { id: true, title: true, status: true, dueAt: true } } },
       }),
       prisma.notification.count({ where: { userId, readAt: null } }),
       prisma.studentActivity.findMany({
-        where: { studentProfileId: profile.id, occurredAt: { gte: weekStart } },
+        where: { studentProfileId: profile.id, occurredAt: { gte: new Date(now.getTime() - 365 * MS_DAY) } },
         orderBy: { occurredAt: "desc" },
-        take: 100,
-        select: { id: true, activityType: true, occurredAt: true, metadata: true, topic: { select: { name: true } } },
+        take: 1000,
+        select: { id: true, activityType: true, occurredAt: true, durationSeconds: true, metadata: true, topic: { select: { name: true } } },
       }),
       prisma.learningProgress.findMany({
         where: { studentProfileId: profile.id },
-        include: { topic: { select: { id: true, subject: { select: { id: true, name: true } } } } },
+        include: {
+          topic: {
+            select: {
+              id: true,
+              name: true,
+              subject: { select: { id: true, name: true, _count: { select: { topics: true } } } },
+            },
+          },
+        },
         orderBy: { lastActivityAt: "desc" },
       }),
+      prisma.resume.findFirst({ where: { studentId: profile.id, deletedAt: null }, orderBy: { updatedAt: "desc" }, select: { id: true, title: true, activeVersion: { select: { id: true, version: true, file: { select: { scanStatus: true, originalName: true } } } } } }),
+      prisma.studyTaskCompletion.count({ where: { completedByUserId: userId, completedAt: { gte: todayStart }, task: { plan: { studentProfileId: profile.id } } } }),
     ]);
 
     const profileSignals = [
@@ -171,6 +223,7 @@ router.get("/dashboard", async (req, res, next) => {
       Boolean(profile.githubUrl || profile.linkedinUrl || profile.portfolioUrl),
       resumeCount > 0,
     ];
+    const profileSignalCount = profileSignals.filter(Boolean).length;
     const applicationStatusCounts = Object.fromEntries(applicationCounts.map(({ status, _count }) => [status, _count._all]));
     const studyTasks = plans.flatMap((plan) => plan.tasks);
     const subjectsById = new Map();
@@ -185,6 +238,7 @@ router.get("/dashboard", async (req, res, next) => {
       const card = subjectsById.get(subject.id) || {
         id: subject.id,
         name: subject.name,
+        totalTopics: subject._count.topics,
         completed: 0,
         inProgress: 0,
         lastActivityAt: progress.lastActivityAt,
@@ -194,17 +248,17 @@ router.get("/dashboard", async (req, res, next) => {
       if (progress.lastActivityAt > card.lastActivityAt) card.lastActivityAt = progress.lastActivityAt;
       subjectsById.set(subject.id, card);
     }
+    const labels = {
+      CODING_SUBMISSION: "Coding submission",
+      AI_INTERVIEW: "AI interview",
+      TOPIC_VIEWED: "Viewed topic",
+    };
+    const links = {
+      CODING_SUBMISSION: "/student/coding",
+      AI_INTERVIEW: "/student/interviews",
+      TOPIC_VIEWED: "/student/subjects",
+    };
     const timeline = activities.slice(0, 5).map((activity) => {
-      const labels = {
-        CODING_SUBMISSION: "Coding submission",
-        AI_INTERVIEW: "AI interview",
-        TOPIC_VIEWED: "Viewed topic",
-      };
-      const links = {
-        CODING_SUBMISSION: "/student/coding",
-        AI_INTERVIEW: "/student/interviews",
-        TOPIC_VIEWED: "/student/subjects",
-      };
       const type = activity.activityType;
       const baseLabel = labels[type] || type.replaceAll("_", " ").toLowerCase();
       return {
@@ -216,17 +270,20 @@ router.get("/dashboard", async (req, res, next) => {
         meta: activity.metadata || {},
       };
     });
+
+    // One pass over activities, bucketed by the client's local day.
+    const activityCountByDay = new Map();
+    for (const activity of activities) {
+      const key = dayKey(activity.occurredAt, tzOffsetMinutes);
+      activityCountByDay.set(key, (activityCountByDay.get(key) || 0) + 1);
+    }
     const weeklyActivity = Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(weekStart);
-      date.setUTCDate(weekStart.getUTCDate() + index);
-      const key = date.toISOString().slice(0, 10);
-      return {
-        date: key,
-        count: activities.filter((activity) => activity.occurredAt.toISOString().slice(0, 10) === key).length,
-      };
+      const key = dayKey(new Date(weekStart.getTime() + index * MS_DAY), tzOffsetMinutes);
+      return { date: key, count: activityCountByDay.get(key) || 0 };
     });
+
     const recommendations = [];
-    if (profileSignals.filter(Boolean).length < profileSignals.length) {
+    if (profileSignalCount < profileSignals.length) {
       recommendations.push({ label: "Complete your profile", href: "/student/profile", reason: "A more complete profile helps recruiters understand your experience." });
     }
     if (!resumeCount) {
@@ -241,14 +298,27 @@ router.get("/dashboard", async (req, res, next) => {
       recommendations.push({ label: "Try an AI interview", href: "/student/interviews", reason: "Practice answering role-specific interview questions." });
     }
 
+    let streak = 0;
+    let cursor = todayStart;
+    if (!activityCountByDay.has(dayKey(cursor, tzOffsetMinutes))) cursor = new Date(cursor.getTime() - MS_DAY);
+    while (activityCountByDay.has(dayKey(cursor, tzOffsetMinutes))) {
+      streak += 1;
+      cursor = new Date(cursor.getTime() - MS_DAY);
+    }
+
+    const weakTopics = subjectProgress
+      .filter((progress) => progress.topic && (progress.status === "REVISION_REQUIRED" || Number(progress.percent) < 40))
+      .slice(0, 5)
+      .map((progress) => ({ id: progress.topic.id, name: progress.topic.name, subject: progress.topic.subject?.name, status: progress.status, percent: Number(progress.percent) }));
+    const todayActivity = activities.filter((activity) => activity.occurredAt >= todayStart);
+    const activePlan = plans[0] || null;
+    const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
+    const profileCompletion = Math.round(profileSignalCount * 10);
+
     res.json({
       data: {
-        profile: { name: [profile.firstName, profile.lastName].filter(Boolean).join(" "), headline: profile.headline, completionPercent: Math.round(profileSignals.filter(Boolean).length * 10) },
-        student: {
-          name: [profile.firstName, profile.lastName].filter(Boolean).join(" "),
-          headline: profile.headline,
-          profileCompletion: Math.round(profileSignals.filter(Boolean).length * 10),
-        },
+        profile: { name: fullName, headline: profile.headline, completionPercent: profileCompletion },
+        student: { name: fullName, headline: profile.headline, profileCompletion },
         overview: {
           codingSolved: summary.coding.solved,
           interviewsCompleted: summary.interviews.completed,
@@ -256,7 +326,7 @@ router.get("/dashboard", async (req, res, next) => {
           problemsAttempted: summary.coding.attempted,
           applicationsTotal: Object.values(applicationStatusCounts).reduce((sum, count) => sum + count, 0),
         },
-        resume: { count: resumeCount, latestScore: summary.resume.latestScore },
+        resume: { count: resumeCount, latestScore: summary.resume.latestScore, latest: latestResume ? { id: latestResume.id, title: latestResume.title, versionId: latestResume.activeVersion?.id || null, version: latestResume.activeVersion?.version || null, scanStatus: latestResume.activeVersion?.file?.scanStatus || "UNAVAILABLE", originalName: latestResume.activeVersion?.file?.originalName || null } : null },
         interviews: { completed: summary.interviews.completed, averageScore: summary.interviews.averageScore },
         applications: { recent: applications, statusCounts: applicationStatusCounts },
         upcomingInterviews,
@@ -266,6 +336,9 @@ router.get("/dashboard", async (req, res, next) => {
           totalTasks: studyTasks.length,
           tasks: studyTasks.filter((task) => task.status !== "COMPLETED"),
         },
+        preparation: { weakTopics },
+        dailyStudy: { streakDays: streak, completedTasks: todayCompletions, trackedMinutes: Math.floor(todayActivity.reduce((total, activity) => total + (activity.durationSeconds || 0), 0) / 60), goalMinutes: activePlan?.dailyMinutes ?? null },
+        readiness: { score: profile.readinessScore == null ? null : Number(profile.readinessScore), calculatedAt: profile.readinessCalculatedAt || null, formulaVersion: profile.readinessFormulaVersion || null, status: profile.readinessScore == null ? "NOT_CALCULATED" : "AVAILABLE" },
         timeline,
         subjects: [...subjectsById.values()],
         upcoming: { interviews: upcomingInterviews },
@@ -285,8 +358,9 @@ router.get("/dashboard", async (req, res, next) => {
 
 router.get("/activities", async (req, res, next) => {
   try {
+    const { limit } = activitiesQuerySchema.parse(req.query);
     const profileId = await profileFor(req.auth.sub);
-    const activities = await getPrisma().studentActivity.findMany({ where: { studentProfileId: profileId }, orderBy: { occurredAt: "desc" }, take: Math.min(Number(req.query.limit) || 50, 100), include: { topic: { select: { name: true } } } });
+    const activities = await getPrisma().studentActivity.findMany({ where: { studentProfileId: profileId }, orderBy: { occurredAt: "desc" }, take: limit, include: { topic: { select: { name: true } } } });
     res.json({ data: activities.map((item) => ({ id: item.id, type: item.activityType, occurredAt: item.occurredAt, topic: item.topic?.name || null, metadata: item.metadata })) });
   } catch (error) { next(error); }
 });
@@ -302,30 +376,28 @@ router.post("/plans", async (req, res, next) => {
           targetRole: input.targetRole,
           deadline: input.deadline || null,
           dailyMinutes: input.dailyMinutes,
-          goals: {
-            create: input.goals.map((title, index) => ({
-              title,
-              priority: index === 0 ? "HIGH" : "MEDIUM",
-              status: "OPEN",
-            })),
-          },
         },
       });
-      const goals = await tx.studyGoal.findMany({
-        where: { studyPlanId: created.id },
-        orderBy: { id: "asc" },
-      });
-      await tx.studyTask.createMany({
-        data: goals.map((goal, index) => ({
-          studyPlanId: created.id,
-          goalId: goal.id,
-          title: `Practice: ${goal.title}`,
-          dueAt: new Date(Date.now() + (index + 1) * 86400000),
-          priority: goal.priority,
-          status: "OPEN",
-          source: "STUDENT_GOAL",
-        })),
-      });
+      // Created one by one so goal order (and therefore due dates) matches the input order.
+      const goals = [];
+      for (const [index, title] of input.goals.entries()) {
+        goals.push(await tx.studyGoal.create({
+          data: { studyPlanId: created.id, title, priority: index === 0 ? "HIGH" : "MEDIUM", status: "OPEN" },
+        }));
+      }
+      if (goals.length) {
+        await tx.studyTask.createMany({
+          data: goals.map((goal, index) => ({
+            studyPlanId: created.id,
+            goalId: goal.id,
+            title: `Practice: ${goal.title}`,
+            dueAt: new Date(Date.now() + (index + 1) * MS_DAY),
+            priority: goal.priority,
+            status: "OPEN",
+            source: "STUDENT_GOAL",
+          })),
+        });
+      }
       return tx.studyPlan.findUnique({
         where: { id: created.id },
         include: { goals: true, tasks: true },
@@ -336,7 +408,10 @@ router.post("/plans", async (req, res, next) => {
 });
 
 router.get("/plans", async (req, res, next) => {
-  try { const profileId = await profileFor(req.auth.sub); res.json({ data: await getPrisma().studyPlan.findMany({ where: { studentProfileId: profileId }, orderBy: { updatedAt: "desc" }, include: { goals: true, tasks: { include: { completions: true }, orderBy: { dueAt: "asc" } } } }) }); } catch (error) { next(error); }
+  try {
+    const profileId = await profileFor(req.auth.sub);
+    res.json({ data: await getPrisma().studyPlan.findMany({ where: { studentProfileId: profileId }, orderBy: { updatedAt: "desc" }, include: { goals: true, tasks: { include: { completions: true }, orderBy: { dueAt: "asc" } } } }) });
+  } catch (error) { next(error); }
 });
 
 router.post("/plans/:planId/tasks/:taskId/complete", async (req, res, next) => {
@@ -346,42 +421,12 @@ router.post("/plans/:planId/tasks/:taskId/complete", async (req, res, next) => {
     if (!task) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study task not found." } });
     const completion = await getPrisma().$transaction(async (tx) => {
       const result = await tx.studyTaskCompletion.upsert({
-        where: {
-          taskId_completedByUserId: {
-            taskId: task.id,
-            completedByUserId: req.auth.sub,
-          },
-        },
+        where: { taskId_completedByUserId: { taskId: task.id, completedByUserId: req.auth.sub } },
         update: { completedAt: new Date() },
         create: { taskId: task.id, completedByUserId: req.auth.sub },
       });
-      await tx.studyTask.update({
-        where: { id: task.id },
-        data: { status: "COMPLETED" },
-      });
-      if (task.goalId) {
-        const remainingGoalTasks = await tx.studyTask.count({
-          where: { goalId: task.goalId, status: { not: "COMPLETED" } },
-        });
-        if (remainingGoalTasks === 0) {
-          await tx.studyGoal.update({
-            where: { id: task.goalId },
-            data: { status: "COMPLETED" },
-          });
-        }
-      }
-      const remainingPlanTasks = await tx.studyTask.count({
-        where: {
-          studyPlanId: task.studyPlanId || req.params.planId,
-          status: { not: "COMPLETED" },
-        },
-      });
-      if (remainingPlanTasks === 0) {
-        await tx.studyPlan.update({
-          where: { id: task.studyPlanId || req.params.planId },
-          data: { status: "COMPLETED" },
-        });
-      }
+      await tx.studyTask.update({ where: { id: task.id }, data: { status: "COMPLETED" } });
+      await syncCompletionState(tx, req.params.planId, task.goalId);
       return result;
     });
     res.json({ data: completion });
@@ -392,18 +437,24 @@ router.post("/plans/:planId/tasks", async (req, res, next) => {
   try {
     const input = taskInputSchema.parse(req.body);
     const profileId = await profileFor(req.auth.sub);
-    const plan = await getPrisma().studyPlan.findFirst({ where: { id: req.params.planId, studentProfileId: profileId }, select: { id: true } });
+    const prisma = getPrisma();
+    const plan = await prisma.studyPlan.findFirst({ where: { id: req.params.planId, studentProfileId: profileId }, select: { id: true } });
     if (!plan) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study plan not found." } });
     if (input.goalId) {
-      const goal = await getPrisma().studyGoal.findFirst({ where: { id: input.goalId, studyPlanId: plan.id }, select: { id: true } });
+      const goal = await prisma.studyGoal.findFirst({ where: { id: input.goalId, studyPlanId: plan.id }, select: { id: true } });
       if (!goal) return res.status(400).json({ error: { code: "INVALID_GOAL", message: "The selected goal does not belong to this study plan." } });
     }
     if (input.topicId) {
-      const topic = await getPrisma().topic.findUnique({ where: { id: input.topicId }, select: { id: true } });
+      const topic = await prisma.topic.findUnique({ where: { id: input.topicId }, select: { id: true } });
       if (!topic) return res.status(400).json({ error: { code: "INVALID_TOPIC", message: "The selected topic was not found." } });
     }
-    const task = await getPrisma().studyTask.create({
-      data: { studyPlanId: plan.id, title: input.title, dueAt: input.dueAt, priority: input.priority, goalId: input.goalId, topicId: input.topicId, status: "OPEN", source: "STUDENT" },
+    const task = await prisma.$transaction(async (tx) => {
+      const created = await tx.studyTask.create({
+        data: { studyPlanId: plan.id, title: input.title, dueAt: input.dueAt, priority: input.priority, goalId: input.goalId, topicId: input.topicId, status: "OPEN", source: "STUDENT" },
+      });
+      // A new open task reopens a plan/goal that was previously marked completed.
+      await syncCompletionState(tx, plan.id, input.goalId);
+      return created;
     });
     res.status(201).json({ data: task });
   } catch (error) { next(error); }
@@ -413,7 +464,7 @@ router.patch("/plans/:planId/tasks/:taskId", async (req, res, next) => {
   try {
     const input = taskUpdateSchema.parse(req.body);
     const profileId = await profileFor(req.auth.sub);
-    const task = await getPrisma().studyTask.findFirst({ where: { id: req.params.taskId, studyPlanId: req.params.planId, plan: { studentProfileId: profileId } }, select: { id: true } });
+    const task = await getPrisma().studyTask.findFirst({ where: { id: req.params.taskId, studyPlanId: req.params.planId, plan: { studentProfileId: profileId } }, select: { id: true, goalId: true } });
     if (!task) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study task not found." } });
     const updated = await getPrisma().$transaction(async (tx) => {
       const result = await tx.studyTask.update({ where: { id: task.id }, data: input });
@@ -426,6 +477,7 @@ router.patch("/plans/:planId/tasks/:taskId", async (req, res, next) => {
       } else if (input.status) {
         await tx.studyTaskCompletion.deleteMany({ where: { taskId: task.id, completedByUserId: req.auth.sub } });
       }
+      if (input.status) await syncCompletionState(tx, req.params.planId, task.goalId);
       return result;
     });
     res.json({ data: updated });
@@ -435,10 +487,12 @@ router.patch("/plans/:planId/tasks/:taskId", async (req, res, next) => {
 router.delete("/plans/:planId/tasks/:taskId", async (req, res, next) => {
   try {
     const profileId = await profileFor(req.auth.sub);
-    const deleted = await getPrisma().studyTask.deleteMany({
-      where: { id: req.params.taskId, studyPlanId: req.params.planId, plan: { studentProfileId: profileId } },
+    const task = await getPrisma().studyTask.findFirst({ where: { id: req.params.taskId, studyPlanId: req.params.planId, plan: { studentProfileId: profileId } }, select: { id: true, goalId: true } });
+    if (!task) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study task not found." } });
+    await getPrisma().$transaction(async (tx) => {
+      await tx.studyTask.deleteMany({ where: { id: task.id } });
+      await syncCompletionState(tx, req.params.planId, task.goalId);
     });
-    if (!deleted.count) return res.status(404).json({ error: { code: "NOT_FOUND", message: "Study task not found." } });
     res.status(204).send();
   } catch (error) { next(error); }
 });

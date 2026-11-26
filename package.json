@@ -14,6 +14,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:preparation": "tsx prisma/seed-preparation.ts",
     "validate:links": "tsx scripts/validate-links.ts",
     "test": "node --test --test-concurrency=1 backend/tests/*.test.js",
     "firebase:emulator": "firebase emulators:start --only auth --project demo-careerprepai",

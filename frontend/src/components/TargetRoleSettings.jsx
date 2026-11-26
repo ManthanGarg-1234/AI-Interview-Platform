@@ -34,7 +34,7 @@ export default function TargetRoleSettings() {
   const selectedSlugs = new Set((selected.data || []).map((item) => item.role.slug));
 
   return (
-    <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section id="target-roles" className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div>
         <h2 className="text-xl font-bold text-slate-950">Target roles</h2>
         <p className="mt-1 text-sm text-slate-600">Choose roles to focus your placement preparation. Self-reported goals are not proficiency evidence.</p>

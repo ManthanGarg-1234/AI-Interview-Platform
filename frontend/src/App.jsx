@@ -11,6 +11,7 @@ import RegisterPage from "./pages/RegisterPage";
 import PortalLayout from "./components/PortalLayout";
 import StudentProfilePage from "./pages/StudentProfilePage";
 import StudentDashboardPage from "./pages/StudentDashboardPage";
+import StudentBookmarksPage from "./pages/StudentBookmarksPage";
 import SubjectsPage from "./pages/SubjectsPage";
 import SubjectDetailPage from "./pages/SubjectDetailPage";
 import TopicLearningPage from "./pages/TopicLearningPage";
@@ -91,6 +92,7 @@ function AppRoutes() {
       {/* Student routes — specific routes MUST come before the wildcard */}
       <Route path="/student" element={student(<StudentDashboardPage />)} />
       <Route path="/student/profile" element={student(<StudentProfilePage />)} />
+      <Route path="/student/bookmarks" element={student(<StudentBookmarksPage />)} />
       <Route path="/student/jobs" element={student(<JobsPage />)} />
       <Route path="/student/jobs/:id" element={student(<JobDetailPage />)} />
       <Route path="/student/resume-analysis" element={student(<ResumeAnalysisPage />)} />
