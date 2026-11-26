@@ -1,7 +1,11 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./lib/api";
 import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
+import { ToastProvider } from "./context/ToastContext";
+import LandingPage from "./pages/LandingPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import PortalLayout from "./components/PortalLayout";
@@ -76,8 +80,10 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public routes */}
+      <Route path="/" element={user ? <Navigate to="/app" replace /> : <LandingPage />} />
       <Route path="/login" element={user ? <Navigate to="/app" replace /> : <LoginPage />} />
       <Route path="/register" element={user ? <Navigate to="/app" replace /> : <RegisterPage />} />
+      <Route path="/forgot-password" element={user ? <Navigate to="/app" replace /> : <ForgotPasswordPage />} />
 
       {/* Root redirect */}
       <Route path="/app" element={<ProtectedRoute><RoleHome /></ProtectedRoute>} />
@@ -132,15 +138,32 @@ function AppRoutes() {
       <Route path="/admin/*" element={<ProtectedRoute roles={["ADMIN"]}>{portal(<AdminDashboardPage />)}</ProtectedRoute>} />
 
       {/* Catch-all */}
-      <Route path="*" element={<ProtectedRoute><RoleHome /></ProtectedRoute>} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
+  );
+}
+
+function NotFoundPage() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
+      <section className="max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <p className="text-sm font-bold uppercase tracking-widest text-indigo-600">404 · Page not found</p>
+        <h1 className="mt-3 text-2xl font-bold text-slate-950">This page isn’t here.</h1>
+        <p className="mt-2 text-slate-600">The link may be outdated, or the address may have been entered incorrectly.</p>
+        <Link className="mt-6 inline-flex rounded-xl bg-indigo-600 px-4 py-2.5 font-bold text-white hover:bg-indigo-700" to="/">Back to CareerPrepAI</Link>
+      </section>
+    </main>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

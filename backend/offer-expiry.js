@@ -3,15 +3,11 @@
 const { Queue } = require("bullmq");
 const { getPrisma } = require("./prisma");
 const { invalidateRecruiterCache } = require("./recruiter");
+const { redisConnection } = require("./redis-connection");
 
 const QUEUE_NAME = "offer-expiry";
 let queue;
 let fallbackTimer;
-
-function redisConnection() {
-  const url = new URL(process.env.REDIS_URL);
-  return { host: url.hostname, port: Number(url.port || 6379), password: url.password || undefined };
-}
 
 function getOfferExpiryQueue() {
   if (!process.env.REDIS_URL) return null;

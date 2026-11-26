@@ -23,6 +23,24 @@ afterEach(() => {
 });
 
 describe("application routes", () => {
+  it("shows the public landing page at the root route for signed-out visitors", async () => {
+    vi.spyOn(api, "get").mockRejectedValue(new Error("Unauthenticated"));
+
+    renderApp("/");
+
+    expect(await screen.findByRole("heading", { name: /Turn your potential into your next opportunity/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Start preparing/ }).getAttribute("href")).toBe("/register");
+  });
+
+  it("routes the password help link to the existing reset request page", async () => {
+    vi.spyOn(api, "get").mockRejectedValue(new Error("Unauthenticated"));
+
+    renderApp("/forgot-password");
+
+    expect(await screen.findByRole("heading", { name: "Reset your password" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send reset link" })).toBeTruthy();
+  });
+
   it.each([
     ["/login", "Welcome back"],
     ["/register", "Create your account"],

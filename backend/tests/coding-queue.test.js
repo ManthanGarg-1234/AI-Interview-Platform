@@ -2,7 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { redisConnection } = require("../coding-queue");
+// Coding execution was retired; keep validating Redis options through the
+// shared connection helper used by the active BullMQ queues.
+const { redisConnection } = require("../redis-connection");
 
 const originalRedisUrl = process.env.REDIS_URL;
 
@@ -37,11 +39,11 @@ test("Redis TLS URLs enable TLS without exposing credentials elsewhere", () => {
 test("invalid Redis URLs fail as configuration errors", () => {
   for (const value of ["https://cache.example", "redis://cache.example/not-a-db", "redis://cache.example/0?tls=true"]) {
     process.env.REDIS_URL = value;
-    assert.throws(() => redisConnection(), { code: "CODING_QUEUE_CONFIGURATION_INVALID" });
+    assert.throws(() => redisConnection(), { code: "REDIS_CONFIGURATION_INVALID" });
   }
 });
 
 test("missing Redis URL fails explicitly", () => {
   delete process.env.REDIS_URL;
-  assert.throws(() => redisConnection(), { code: "CODING_QUEUE_UNAVAILABLE" });
+  assert.throws(() => redisConnection(), { code: "REDIS_NOT_CONFIGURED" });
 });

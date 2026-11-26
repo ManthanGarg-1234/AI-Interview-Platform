@@ -81,4 +81,6 @@ See [docs/architecture.md](./docs/architecture.md) for the module map, routing c
 
 The repository predates Phase 1 and includes working feature modules and local uncommitted changes. The established `frontend/` and `backend/` locations remain canonical; this phase does not move them to `client/` or `backend/src/`. New modules follow the current structure and are integrated with its shared providers, routes, API, and Prisma client. Existing later-phase features are preserved, not reimplemented by this foundation work.
 
+Track Phase 1 implementation and verification in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md). Phase 1 is verified; Phase 2 has not started.
+
 Password reset is deliberately an informational placeholder until the later authentication phase; it does not pretend to send a reset email. Protected application routes continue to use the existing server-backed session check rather than fabricated client authentication.

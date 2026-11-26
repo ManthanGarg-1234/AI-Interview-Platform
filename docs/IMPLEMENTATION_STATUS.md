@@ -1,5 +1,26 @@
 # Implementation Status
 
+## Current implementation checklist — 2026-11-26
+
+### Phase 1: public entry and shared application foundation
+
+- [x] Route signed-out visitors at `/` to the existing public landing page.
+- [x] Route signed-in visitors from `/` into their role-specific workspace.
+- [x] Mount persisted theme and toast providers in the application shell.
+- [x] Mount the application error boundary in the production entry point.
+- [x] Expose the existing password-reset request screen at `/forgot-password`.
+- [x] Render a public not-found page for unknown routes.
+- [x] Keep placement practice based on curated external problem links and manual progress tracking; the active placement screens contain no editor, compiler, or judge.
+- [x] Backend: focused Redis connection test passes (4/4); full suite passes (148/148).
+- [x] Frontend: 11 test files pass (40/40); production build succeeds.
+- [x] Root and frontend dependency checks pass; Prisma schema validation passes.
+
+**Phase 1 status: verified. Phase 2 has not started.**
+
+The coding-queue import in the Redis test was stale: Git history shows that `backend/coding-queue.js` was intentionally removed when in-app code execution was disabled. The test now exercises the same Redis parsing cases through a shared utility used by the active offer-expiry queue; the disabled coding executor was not restored.
+
+The untracked company-logo files in `server/data/uploads/company-logos/1166ecf7-c5f3-4298-ba1e-17d04df0a3e4/` and `server/data/uploads/company-logos/72e40cc7-f42a-404a-9471-d8c9adbca460/` match the outputs of `backend/tests/recruiter-logo-r1.test.js` (PNG, JPEG, and WebP signature fixtures). They were inspected and left unchanged at the user's direction.
+
 ## 2026-11-03 - Phase 1 foundation started
 
 - Added the React/Vite/Tailwind frontend shell under `frontend/`.
