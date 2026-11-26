@@ -658,7 +658,7 @@ async function completeGoogleOAuth(req, res) {
     }
   }
 
-  if (user.status !== "ACTIVE" || user.deletedAt || !user.emailVerifiedAt) {
+  if (user.status !== "ACTIVE" || user.role === "SYSTEM" || user.deletedAt || !user.emailVerifiedAt) {
     return redirectGoogleOAuth(res, config, "/login", "unavailable");
   }
   const session = await createSession(prisma, user, req, null, "GOOGLE");
