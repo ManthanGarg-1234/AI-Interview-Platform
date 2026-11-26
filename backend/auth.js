@@ -335,7 +335,7 @@ async function register(req, res, forcedRole = null) {
           fullName,
           passwordHash,
           role,
-          status: "PENDING_VERIFICATION",
+          status: "PENDING",
           emailVerifiedAt: null,
           studentProfile: role === "STUDENT"
             ? { create: { firstName, lastName: lastParts.join(" ") || firstName } }
@@ -796,7 +796,7 @@ async function firebaseGoogleAuth(req, res) {
     }
   }
 
-  if (user.status !== "ACTIVE" || user.deletedAt || !user.emailVerifiedAt) {
+  if (user.status !== "ACTIVE" || user.role === "SYSTEM" || user.deletedAt || !user.emailVerifiedAt) {
     throw httpError(403, "ACCOUNT_UNAVAILABLE", "This account cannot sign in.");
   }
   const session = await createSession(prisma, user, req, null, "GOOGLE");
@@ -832,7 +832,7 @@ async function resendVerification(req, res) {
     where: { emailNormalized: normalizeEmail(input.email) },
     select: { id: true, email: true, status: true, emailVerifiedAt: true, deletedAt: true },
   });
-  if (!user || user.status !== "PENDING_VERIFICATION" || user.emailVerifiedAt || user.deletedAt) {
+  if (!user || user.status !== "PENDING" || user.emailVerifiedAt || user.deletedAt) {
     return res.status(202).json({ message: "If an account needs verification, a message will be sent if email delivery is available." });
   }
 
@@ -864,7 +864,7 @@ async function verifyEmail(req, res) {
       include: { user: { select: { id: true, status: true, emailVerifiedAt: true, deletedAt: true } } },
     });
     if (!record || record.usedAt || record.expiresAt <= now
-      || record.user.status !== "PENDING_VERIFICATION" || record.user.emailVerifiedAt || record.user.deletedAt) {
+      || record.user.status !== "PENDING" || record.user.emailVerifiedAt || record.user.deletedAt) {
       return null;
     }
     const claimed = await tx.emailVerificationToken.updateMany({
@@ -873,7 +873,7 @@ async function verifyEmail(req, res) {
     });
     if (claimed.count !== 1) return null;
     const changed = await tx.user.updateMany({
-      where: { id: record.userId, status: "PENDING_VERIFICATION", emailVerifiedAt: null, deletedAt: null },
+      where: { id: record.userId, status: "PENDING", emailVerifiedAt: null, deletedAt: null },
       data: { status: "ACTIVE", emailVerifiedAt: now },
     });
     if (changed.count !== 1) return null;
@@ -1079,7 +1079,7 @@ async function login(req, res) {
     await recordLoginFailure(req, user);
     throw httpError(401, "INVALID_CREDENTIALS", "Invalid email or password.");
   }
-  if (user.status !== "ACTIVE" || user.deletedAt || !user.emailVerifiedAt) {
+  if (user.status !== "ACTIVE" || user.role === "SYSTEM" || user.deletedAt || !user.emailVerifiedAt) {
     const action = user.status === "SUSPENDED" ? "AUTH_SUSPENDED_LOGIN_ATTEMPT" : "AUTH_LOGIN_FAILURE";
     await recordLoginFailure(req, user, action);
     throw httpError(401, "INVALID_CREDENTIALS", "Invalid email or password.");
@@ -1183,7 +1183,7 @@ async function rotateRefreshToken(prisma, req, rawToken) {
 
     const user = family.user;
     if (token.expiresAt <= now || family.expiresAt <= now
-      || user.status !== "ACTIVE" || user.deletedAt || !user.emailVerifiedAt) {
+      || user.status !== "ACTIVE" || user.role === "SYSTEM" || user.deletedAt || !user.emailVerifiedAt) {
       const reason = user.status === "SUSPENDED" || user.deletedAt ? "ACCOUNT_INACTIVE" : "EXPIRED";
       await revokeFamilyInTransaction(tx, family.id, reason, now);
       await writeAudit(tx, req, "AUTH_REFRESH_REJECTED", user.id, "TOKEN_FAMILY", family.id, { reason });
@@ -1426,7 +1426,7 @@ async function authenticate(req, _res, next) {
       },
     });
     if (!session || !session.tokenFamily || session.tokenFamily.revokedAt
-      || session.tokenFamily.expiresAt <= now || session.user.status !== "ACTIVE"
+      || session.tokenFamily.expiresAt <= now || session.user.status !== "ACTIVE" || session.user.role === "SYSTEM"
       || session.user.deletedAt || !session.user.emailVerifiedAt) {
       return next(httpError(401, "UNAUTHENTICATED", "Authentication session is no longer active."));
     }

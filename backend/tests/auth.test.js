@@ -602,7 +602,7 @@ test("student registration requires consent and stores an Argon2id hash without 
   });
   assert.equal(response.status, 201);
   const body = await response.json();
-  assert.equal(body.data.status, "PENDING_VERIFICATION");
+  assert.equal(body.data.status, "PENDING");
   assert.equal(body.data.email, email.toLowerCase());
   assert.equal(body.data.role, "STUDENT");
   assert.equal(JSON.stringify(body).includes(password), false);
@@ -646,7 +646,7 @@ test("student registration requires consent and stores an Argon2id hash without 
   });
   assert.deepEqual(audit.after, {
     role: "STUDENT",
-    status: "PENDING_VERIFICATION",
+    status: "PENDING",
   });
 });
 
@@ -852,7 +852,7 @@ test("Firebase Google linking requires a verified existing email", async (t) => 
     if (restoreProject === undefined) delete process.env.FIREBASE_PROJECT_ID;
     else process.env.FIREBASE_PROJECT_ID = restoreProject;
   });
-  const existing = await seedUser({ status: "PENDING_VERIFICATION" });
+  const existing = await seedUser({ status: "PENDING" });
   t.mock.method(firebaseAuth, "verifyFirebaseGoogleToken", async () => ({
     email: existing.email,
     email_verified: true,
@@ -1138,7 +1138,7 @@ test("registration reports provider failure and allows a later verification rese
     where: { emailNormalized: email },
     include: { emailVerificationTokens: true },
   });
-  assert.equal(user.status, "PENDING_VERIFICATION");
+  assert.equal(user.status, "PENDING");
   assert.ok(user.emailVerificationTokens.every((item) => item.usedAt));
   assert.equal((await loginUser(user)).response.status, 401);
 
@@ -1400,7 +1400,7 @@ test("successful legacy bcrypt login upgrades the stored password hash", async (
   assert.match(refreshedUser.passwordHash, /^\$argon2id\$/);
 });
 
-test("login failures are generic for unknown, OAuth-only, pending and suspended accounts", async () => {
+test("login failures are generic for unknown, OAuth-only, pending, suspended and deleted accounts", async () => {
   const oauthEmail = `oauth-${crypto.randomUUID()}@example.test`;
   trackEmail(oauthEmail);
   const oauthUser = await getPrisma().user.create({
@@ -1416,8 +1416,9 @@ test("login failures are generic for unknown, OAuth-only, pending and suspended 
       },
     },
   });
-  const pending = await seedUser({ status: "PENDING_VERIFICATION" });
+  const pending = await seedUser({ status: "PENDING" });
   const suspended = await seedUser({ status: "SUSPENDED" });
+  const deleted = await seedUser({ status: "DELETED" });
   const attempts = [
     await request("/auth/login", {
       method: "POST",
@@ -1438,6 +1439,10 @@ test("login failures are generic for unknown, OAuth-only, pending and suspended 
       method: "POST",
       body: { email: suspended.email, password: testPassword },
     }),
+    await request("/auth/login", {
+      method: "POST",
+      body: { email: deleted.email, password: testPassword },
+    }),
   ];
   const results = await Promise.all(
     attempts.map((response) => response.json()),
@@ -1451,7 +1456,7 @@ test("login failures are generic for unknown, OAuth-only, pending and suspended 
   const failureAudits = await getPrisma().auditLog.findMany({
     where: {
       action: "AUTH_LOGIN_FAILURE",
-      resourceId: { in: [oauthUser.id, pending.id, suspended.id] },
+      resourceId: { in: [oauthUser.id, pending.id, suspended.id, deleted.id] },
     },
     select: { after: true },
   });
@@ -1461,6 +1466,17 @@ test("login failures are generic for unknown, OAuth-only, pending and suspended 
         JSON.stringify(after) === JSON.stringify({ result: "failure" }),
     ),
   );
+});
+
+test("SYSTEM principals cannot use interactive user sessions", async () => {
+  const system = await seedUser({ role: "SYSTEM" });
+  const response = await request("/auth/login", {
+    method: "POST",
+    body: { email: system.email, password: testPassword },
+  });
+  assert.equal(response.status, 401);
+  const sessions = await getPrisma().userSession.count({ where: { userId: system.id } });
+  assert.equal(sessions, 0);
 });
 
 test("session listing and revocation are user-scoped and revoke the refresh family", async () => {

@@ -16,7 +16,7 @@ state is never trusted.
 The backend exposes `POST /api/v1/auth/register`,
 `POST /api/v1/auth/register/student`, and
 `POST /api/v1/auth/register/recruiter`. Registration requires `confirmPassword`, `acceptedTerms: true`, and
-`acceptedPrivacyPolicy: true`; accounts remain `PENDING_VERIFICATION` and cannot sign
+`acceptedPrivacyPolicy: true`; accounts remain `PENDING` and cannot sign
 in until the emailed one-time verification link activates them. Verification links
 carry the token in a URL fragment, which is not sent in HTTP requests or referrer
 headers; the frontend removes it from browser history and submits it in a POST body.

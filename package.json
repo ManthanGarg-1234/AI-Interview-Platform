@@ -8,7 +8,6 @@
     "dev": "nodemon backend/index.js",
     "worker": "node backend/resume-worker.js",
     "offer-worker": "node backend/offer-expiry-worker.js",
-    "coding-worker": "node backend/coding-worker.js",
     "build": "npm --prefix frontend run build",
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
@@ -19,7 +18,7 @@
     "test": "node --test --test-concurrency=1 backend/tests/*.test.js",
     "firebase:emulator": "firebase emulators:start --only auth --project demo-careerprepai",
     "test:e2e": "node scripts/run-e2e.js",
-    "dev:all": "concurrently -n \"API,RESUME,CODING,OFFER,WEB\" -c \"blue,green,yellow,cyan,magenta\" \"npm run dev\" \"npm run worker\" \"npm run coding-worker\" \"npm run offer-worker\" \"npm --prefix frontend run dev\""
+    "dev:all": "concurrently -n \"API,RESUME,OFFER,WEB\" -c \"blue,green,cyan,magenta\" \"npm run dev\" \"npm run worker\" \"npm run offer-worker\" \"npm --prefix frontend run dev\""
   },
   "engines": {
     "node": ">=20"
@@ -57,7 +56,8 @@
     "typescript": "^7.0.2"
   },
   "overrides": {
+    "@grpc/grpc-js": "^1.14.5",
     "deepmerge-ts": "8.0.2",
-    "effect": "3.20.0"
+    "effect": "3.22.1"
   }
 }

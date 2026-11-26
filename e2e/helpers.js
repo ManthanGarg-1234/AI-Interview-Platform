@@ -46,7 +46,7 @@ async function createDatabaseUser({ email = uniqueEmail("account"), role = "STUD
       fullName: `E2E ${role}`,
       passwordHash: await hashPassword(password),
       role,
-      status: verified ? "ACTIVE" : "PENDING_VERIFICATION",
+      status: verified ? "ACTIVE" : "PENDING",
       emailVerifiedAt: verified ? new Date() : null,
       studentProfile: role === "STUDENT"
         ? { create: { firstName: "E2E", lastName: "Student" } }

@@ -16,7 +16,7 @@ datasource db {
 }
 
 enum UserRole { STUDENT RECRUITER ADMIN }
-enum AccountStatus { PENDING_VERIFICATION ACTIVE SUSPENDED DELETED }
+enum AccountStatus { PENDING ACTIVE SUSPENDED DELETED }
 enum CompanyStatus { PENDING_VERIFICATION VERIFIED SUSPENDED REJECTED }
 enum CompanyMemberRole { OWNER HIRING_MANAGER REVIEWER INTERVIEWER ANALYST }
 enum JobStatus { DRAFT PUBLISHED PAUSED CLOSED ARCHIVED }
@@ -48,7 +48,7 @@ model User {
   email              String          @unique @db.VarChar(320)
   passwordHash       String          @db.VarChar(255)
   role               UserRole
-  status             AccountStatus   @default(PENDING_VERIFICATION)
+  status             AccountStatus   @default(PENDING)
   emailVerifiedAt    DateTime?
   lastLoginAt        DateTime?
   suspendedAt        DateTime?

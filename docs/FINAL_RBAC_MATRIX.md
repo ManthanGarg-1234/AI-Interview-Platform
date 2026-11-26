@@ -13,7 +13,7 @@ route guard is UX only. Every protected request evaluates:
 6. rate, state-transition, and suspension rules;
 7. audit requirements.
 
-`PENDING_VERIFICATION` can use only verification/resend flows. `ACTIVE` can use
+`PENDING` can use only verification/resend flows. `ACTIVE` can use
 authorized features. `SUSPENDED` can use only appeal/support flows. `DELETED`
 has no interactive access. Admin accounts are provisioned; public admin signup
 is forbidden.

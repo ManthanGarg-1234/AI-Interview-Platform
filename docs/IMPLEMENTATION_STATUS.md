@@ -15,7 +15,32 @@
 - [x] Frontend: 11 test files pass (40/40); production build succeeds.
 - [x] Root and frontend dependency checks pass; Prisma schema validation passes.
 
-**Phase 1 status: verified. Phase 2 has not started.**
+**Phase 1 status: verified. Phase 2 foundation: implemented; verification status is recorded below.**
+
+### Phase 2: authentication, authorization, and persistence foundation
+
+- [x] Removed the obsolete coding-worker script and removed it from `dev:all`; the active resume worker, offer worker, and Redis dependency remain.
+- [x] Prisma/PostgreSQL schema includes user/student/recruiter/company foundations, company memberships and all five recruiter membership roles, job/application/interview/profile/security entities, relational constraints, indexes, and audit records.
+- [x] Authentication includes Argon2id password hashing, registration, email verification, login, password reset/change, logout, refresh rotation and reuse detection, session listing/revocation, HTTP-only cookies, CSRF checks, Redis rate limiting, and audit/security events.
+- [x] Account lifecycle states are `PENDING`, `ACTIVE`, `SUSPENDED`, and `DELETED`; roles are `STUDENT`, `RECRUITER`, `ADMIN`, and `SYSTEM`. Public registration cannot create privileged roles.
+- [x] Recruiter API checks company membership and membership role at the backend; data access is company scoped. Frontend role routing is backed by `/auth/me`; it is not an authorization boundary.
+- [x] Added a forward migration to rename the account pending state and add the SYSTEM role without dropping user data.
+- [x] Applied the Phase 2 migration to the configured PostgreSQL database; migration status is clean.
+- [x] Added backend tests for `SYSTEM` interactive-session denial and deleted-account login denial. Existing tests cover refresh rotation/reuse, suspension/deletion revocation, session revocation, and cross-company access.
+- [x] Production dependency audits report zero vulnerabilities for root and frontend production dependencies.
+
+### Phase 2 verification — 2026-11-26
+
+- `npx prisma validate`: PASS.
+- `npx prisma migrate deploy` and `npm run db:status`: PASS; all 16 migrations are applied.
+- `npm test`: PASS, 149/149 backend tests.
+- `npm --prefix frontend test -- --run`: PASS, 40/40 frontend tests.
+- `npm run build`: PASS. Vite reports the existing 1.30 MB minified JavaScript chunk warning.
+- Root and frontend dependency tree checks: PASS. `npm audit --omit=dev` and `npm audit --prefix frontend`: PASS, zero vulnerabilities. Full root audit reports 14 moderate vulnerabilities in development tooling; no forced breaking dependency downgrades were applied.
+- `git diff --check`: PASS.
+- `npx prisma generate` reports Windows `EPERM` when replacing the query-engine DLL held by the already-running API. The updated generated client metadata was produced and the full backend suite passed against it; rerun client generation after restarting the local API process.
+
+**Phase 2 implementation is complete.** Remaining operational work: restart the pre-existing local `dev:all` process so it uses the updated command and generated Prisma client; provision production email delivery and secure environment values; review moderate development-tool audit advisories.
 
 The coding-queue import in the Redis test was stale: Git history shows that `backend/coding-queue.js` was intentionally removed when in-app code execution was disabled. The test now exercises the same Redis parsing cases through a shared utility used by the active offer-expiry queue; the disabled coding executor was not restored.
 

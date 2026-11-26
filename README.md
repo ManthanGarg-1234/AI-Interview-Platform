@@ -66,7 +66,8 @@ The backend verifies Firebase ID tokens with Firebase Admin and rejects revoked 
 | `npm run db:migrate:deploy` | Apply committed migrations |
 | `npm run db:status` | Check migration status |
 | `npm run worker` | Start resume processing worker |
-| `npm run coding-worker` | Start coding execution worker |
+| `npm run offer-worker` | Start offer expiry worker |
+| `npm run dev:all` | Start API, resume worker, offer worker, and frontend |
 
 ## Architecture
 
@@ -81,6 +82,12 @@ See [docs/architecture.md](./docs/architecture.md) for the module map, routing c
 
 The repository predates Phase 1 and includes working feature modules and local uncommitted changes. The established `frontend/` and `backend/` locations remain canonical; this phase does not move them to `client/` or `backend/src/`. New modules follow the current structure and are integrated with its shared providers, routes, API, and Prisma client. Existing later-phase features are preserved, not reimplemented by this foundation work.
 
-Track Phase 1 implementation and verification in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md). Phase 1 is verified; Phase 2 has not started.
+Track implementation and verification in [docs/IMPLEMENTATION_STATUS.md](./docs/IMPLEMENTATION_STATUS.md). Phase 1 is verified and Phase 2 foundations are implemented.
 
-Password reset is deliberately an informational placeholder until the later authentication phase; it does not pretend to send a reset email. Protected application routes continue to use the existing server-backed session check rather than fabricated client authentication.
+Authentication supports email verification, password reset, Argon2id password hashing, short lived access cookies, rotating refresh sessions, session revocation, CSRF protection, Redis backed rate limits, and audit events. Email delivery requires `EMAIL_API_URL` and `EMAIL_API_KEY`. Generate high entropy independent values for `ACCESS_TOKEN_SECRET` and `SESSION_TOKEN_PEPPER`; production requires at least 32 characters, HTTPS origins, and secure cookies. `COOKIE_SAME_SITE` defaults to `lax`; use `none` only for cross-site HTTPS deployments and set `COOKIE_DOMAIN` only when required. Frontend code receives user identity and role metadata from `/auth/me`; session tokens remain in HTTP-only cookies.
+
+`SYSTEM` is an internal RBAC principal and cannot use interactive password or Google sessions. It has no public registration path or frontend portal. Backend routes grant permissions only when their role and company-membership policies explicitly allow them.
+
+### Database migrations
+
+For local development, start PostgreSQL and run `npm run db:generate`, then `npm run db:migrate:dev`. For deployed environments, run `npm run db:migrate:deploy` as a release step and `npm run db:status` to inspect migration state. `npm run db:seed` inserts the repository's curated learning catalog; it does not create demo accounts. Never use `migrate dev` against production. PostgreSQL integration checks require a reachable `DATABASE_URL`; Redis-backed authentication limiting requires a reachable `REDIS_URL` outside tests.

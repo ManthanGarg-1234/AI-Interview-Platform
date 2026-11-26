@@ -11,6 +11,7 @@ enum UserRole {
   STUDENT
   RECRUITER
   ADMIN
+  SYSTEM
 }
 
 enum OAuthProvider {
@@ -18,7 +19,7 @@ enum OAuthProvider {
 }
 
 enum AccountStatus {
-  PENDING_VERIFICATION
+  PENDING
   ACTIVE
   SUSPENDED
   DELETED
@@ -286,7 +287,7 @@ model User {
   passwordHash       String?         @db.VarChar(255)
   profileImageUrl    String?         @db.VarChar(2048)
   role               UserRole
-  status             AccountStatus   @default(PENDING_VERIFICATION)
+  status             AccountStatus   @default(PENDING)
   emailVerifiedAt    DateTime?
   lastLoginAt        DateTime?
   failedLoginAttempts  Int             @default(0)
